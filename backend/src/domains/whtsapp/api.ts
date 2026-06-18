@@ -1,0 +1,17 @@
+import { NextFunction, Request, Response, Router } from "express";
+import { sendWhatsAppTextwithButton } from "./sendWhatsApp";
+
+export const routes = (): Router => {
+    const router = Router();
+
+    router.post("/send", async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const result = await sendWhatsAppTextwithButton(req.body);
+            return res.status(result.status).json(result);
+        } catch (error) {
+            next(error);
+        }
+    });
+
+    return router;
+};

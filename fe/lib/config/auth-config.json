@@ -1,0 +1,95 @@
+{
+  "brand": {
+    "name": "3M WhatsApp",
+    "primaryColor": "#25D366",
+    "primaryColorDark": "#128C7E"
+  },
+  "leftColumn": {
+    "image2": "/images/auth-hero.jpg",
+    "image": "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=1600&auto=format&fit=crop&q=80",
+    "overlay": {
+      "title": "Welcome to 3M WhatsApp",
+      "description": "Manage your team tasks, send WhatsApp reminders, and track progress — all from one place.",
+      "backgroundColor": "rgba(0, 0, 0, 0.6)",
+      "textColor": "#FFFFFF",
+      "position": "bottom-left",
+      "showCarousel": true,
+      "currentSlide": 0,
+      "totalSlides": 3
+    }
+  },
+  "rightColumn": {
+    "login": {
+      "title": "Sign in to 3M WhatsApp",
+      "newUserText": "New to 3M WhatsApp?",
+      "signUpLinkText": "Sign Up now",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Enter your email",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Enter your password",
+      "rememberMeText": "Remember for 30 days",
+      "forgotPasswordText": "Forgot Password?",
+      "submitButtonText": "Sign In",
+      "submitButtonLoadingText": "Signing you in...",
+      "orSeparatorText": "Or",
+      "googleSignInText": "Sign in with Google",
+      "googleSignInShowUser": false,
+      "googleSignInUserName": "",
+      "googleSignInUserEmail": ""
+    },
+    "signup": {
+      "title": "Sign up to 3M WhatsApp",
+      "existingUserText": "Already have an account?",
+      "signInLinkText": "Sign In now",
+      "nameLabel": "Full Name",
+      "namePlaceholder": "Enter your full name",
+      "numberLabel": "Phone Number",
+      "numberPlaceholder": "Enter your phone number",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Enter your email",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Create a password",
+      "passwordHint": "Minimum 6 characters.",
+      "submitButtonText": "Create account",
+      "submitButtonLoadingText": "Creating your account...",
+      "orSeparatorText": "Or",
+      "googleSignUpText": "Sign up with Google",
+      "googleSignUpShowUser": false,
+      "googleSignUpUserName": "",
+      "googleSignUpUserEmail": "",
+      "termsText": "By continuing you agree to",
+      "termsLinkText": "Terms",
+      "privacyLinkText": "Privacy Policy"
+    },
+    "forgotPassword": {
+      "title": "Forgot your password?",
+      "subtitle": "",
+      "subtitleSent": "Check your inbox for the reset link. It expires in 15 minutes.",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Enter your email",
+      "submitButtonText": "Send reset link",
+      "submitButtonLoadingText": "Sending reset link...",
+      "rememberedPasswordText": "Remembered your password?",
+      "backToSignInText": "Back to sign in",
+      "successMessage": "We emailed {email} with a secure reset link. If it doesn't appear soon, check spam or try resending below.",
+      "useDifferentEmailText": "Use a different email",
+      "resendLinkText": "Resend link",
+      "returnToSignInText": "Return to sign in"
+    },
+    "resetPassword": {
+      "title": "Reset your password",
+      "subtitle": "Create a new password for your account.",
+      "passwordLabel": "New Password",
+      "passwordPlaceholder": "Enter your new password",
+      "confirmPasswordLabel": "Confirm Password",
+      "confirmPasswordPlaceholder": "Confirm your new password",
+      "submitButtonText": "Reset password",
+      "submitButtonLoadingText": "Resetting password...",
+      "successTitle": "Password reset successful!",
+      "successMessage": "Your password has been reset successfully. You can now sign in with your new password.",
+      "backToSignInText": "Back to sign in",
+      "missingTokenMessage": "The reset link is missing or has expired. Request a new one to continue.",
+      "requestNewLinkText": "Request new link"
+    }
+  }
+}

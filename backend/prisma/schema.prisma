@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role{
+  user
+  manager
+  admin
+}
+
+enum Provider{
+  whatsapp
+  local
+  google
+  microsoft
+}
+
+enum TaskStaus{
+  pending
+  inProgress
+  onTrack
+  remark
+  completed
+  cancelled
+  deleted
+}
+
+enum AcceptStatus{
+  accept
+  remaining
+  decline 
+}
+
+enum onTrackStatus{
+  onTrack
+  remark
+  remaining
+}
+
+enum AttendenceType{
+  morning
+  afternoon
+}
+
+model User{
+  id              String    @id @default(cuid())
+  name            String   
+  username        String    @unique @default(cuid())
+  number          String  
+  role            Role      @default(user)
+  email           String?   @unique
+  emailVerified   Boolean   @default(false)
+  password        String?
+  notAttentReason String?  
+  provider        Provider  @default(whatsapp) 
+
+ //relations
+  parentId        String?
+  parent          User?     @relation("UserHierarchy",fields:[parentId],references:[id])
+  children        User[]    @relation("UserHierarchy")
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime? 
+
+  // revres connection
+  Dailytask       DailyTask[]
+  tasks           Task[]
+  cron            Cron[]
+  attendence      Attendence[]
+
+  @@index([parentId])
+}
+
+model DailyTask{
+  id              String        @id @default(cuid())
+  userId          String        
+
+  status          AcceptStatus?
+  finaldecision   onTrackStatus?          
+  notAttentReason String?
+
+  sent            Boolean       @default(false)
+  sendAt          DateTime?
+
+  date            DateTime
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?     
+
+  user            User          @relation(fields:[userId] , references:[id] , onDelete:Cascade)
+
+  tasks           Task[]
+  @@index([userId])
+  @@index([deletedAt])
+}
+
+model Task {
+  id               String       @id @default(cuid())
+  name             String
+  dailyTaskId      String
+  userId           String
+  description      String?
+
+  status           TaskStaus?
+
+  // remark reason
+  remarkReason     String?
+  howmuchComplete  String?
+  
+  // task time to complete
+  actualTime       String?
+  extratTme        String?
+  totalTime        String?
+
+  //assign details
+  sent             Boolean      @default(false)
+  sendAt           DateTime?
+
+  rawStartTime     String
+  rawEndTime       String
+  startAt          DateTime
+  endAt            DateTime
+
+  //normal details for dashbboard
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?      
+
+  //relation
+  user             User         @relation(fields:[userId] , references:[id] , onDelete:Cascade)
+  dailyTask        DailyTask    @relation(fields:[dailyTaskId] , references:[id] , onDelete:Cascade)
+
+  @@index([userId])
+  @@index([dailyTaskId])
+  @@index([deletedAt])
+}
+
+model Attendence {
+  id        String         @id @default(cuid())
+  type      AttendenceType 
+  time      String
+  userId    String
+
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  deletedAt DateTime?
+
+  user      User           @relation(fields:[userId],references:[id],onDelete:Cascade)
+
+  @@index([userId])
+  @@index([deletedAt])
+}
+
+model Cron {
+  id         String   @id @default(cuid())
+  name       String
+  time       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  updateById String
+
+  user       User     @relation(fields:[updateById],references:[id])
+
+  @@index([name])
+}

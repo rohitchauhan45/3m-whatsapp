@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "groups": [
+    {
+      "name": "chauhan Rohit",
+      "date": true,
+      "tasks": 3,
+      "mgr": "Nidhish sir"
+    },
+    {
+      "name": "Jeet bhavsar",
+      "date": true,
+      "tasks": 2,
+      "mgr": "Nidhish sir"
+    },
+    {
+      "name": "jay prajapati",
+      "date": true,
+      "tasks": 2,
+      "mgr": "Nidhish sir"
+    },
+    {
+      "name": "vivek mesuriya",
+      "date": true,
+      "tasks": 3,
+      "mgr": "Nidhish sir"
+    }
+  ]
+}
