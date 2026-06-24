@@ -27,7 +27,7 @@ const createExpressApp = (): Express => {
   // CORS configuration - allow frontend on port 4005
   expressApp.use(
     cors({
-      origin: process.env.FRONTEND_URL || "http://localhost:4005",
+      origin: process.env.FRONTEND_URL,
       credentials: true,
     }),
   );
