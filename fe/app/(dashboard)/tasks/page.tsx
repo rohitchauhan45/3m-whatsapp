@@ -11,6 +11,12 @@ import {
   formatUploadErrorMessage,
   type AdminTaskDay,
 } from '@/lib/services/taskService';
+import {
+  invalidateAdminTasks,
+  invalidateDashboardQueries,
+  queryKeys,
+} from '@/lib/query-keys';
+import { cachedQueryOptions } from '@/lib/query-config';
 
 type View = 'list' | 'detail' | 'upload';
 
@@ -24,9 +30,10 @@ export default function TasksPage() {
   const [dragOver, setDragOver] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-tasks'],
+    queryKey: queryKeys.adminTasks,
     queryFn: fetchAllTasks,
     enabled: !!user?.id,
+    ...cachedQueryOptions,
   });
 
   const days = data?.days || [];
@@ -37,7 +44,8 @@ export default function TasksPage() {
       const fullMessage = formatUploadErrorMessage(res);
       setToast({ message: fullMessage, type: res.success ? 'success' : 'error' });
       if (res.success) {
-        queryClient.invalidateQueries({ queryKey: ['admin-tasks'] });
+        invalidateAdminTasks(queryClient);
+        invalidateDashboardQueries(queryClient);
       }
     },
     onError: (err: Error) => {

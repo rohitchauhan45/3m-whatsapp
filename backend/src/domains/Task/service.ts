@@ -3,7 +3,7 @@ import { prisma } from "../../libraries/db";
 import logger from "../../libraries/log/logger";
 import { excelAssignRowSchema, formatExcelRowZodError } from "./request";
 import { AppError } from "../../libraries/error-handling/AppError";
-import { convertUserTimeToHour, parseTimeOnDate } from "../../libraries/util/Task/timing";
+import { convertUserTimeToMinutes, parseTimeOnDate } from "../../libraries/util/Task/timing";
 
 import { createUserWhatsApp } from "../auth/service";
 import { groupAssignTaskSheetRows, normalizeSheetDate, readAssignTaskExcelSheetRows, } from "../../libraries/util/Task/readfromxl";
@@ -14,7 +14,7 @@ import {
     sendManagerSummaryofAssisgnMessage,
 } from "../messages/assignTaskMessages";
 import { ensureIndiaCountryCode91 } from "../../libraries/util/Task/number";
-import { managerFollowUpSummaryMessage, userFollowUpTaskMessage } from "../messages/followupMessage";
+import { managerFollowUpSummaryMessage, taskremarkresontoManager, userFollowUpTaskMessage } from "../messages/followupMessage";
 import { reasonMessage } from "../messages/reason";
 import { normalizeChoiceforTaskfollowUp, normlizeChiocestartChoice, normlizeChoiceforDaily } from "../../libraries/util/Task/status";
 import { finalDecisionMessage } from "../../domains/messages/ontrack";
@@ -58,10 +58,6 @@ export type FinalDecisionResult = {
     skippedNoTasks: number;
     failedSends: number;
 };
-
-const startOfCalendarDay = (d: Date): Date => {
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
-}
 
 const BATCH_SIZE = 100;
 const BATCH_DELAY_MS = 10_000;
@@ -208,7 +204,7 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
                     userId = created.id;
                 }
 
-                const dayDate = startOfCalendarDay(data.date);
+                const dayDate = data.date;
 
                 let dailyTask = await tx.dailyTask.findFirst({
                     where: {
@@ -247,8 +243,10 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
                         },
                     });
                 }
-            });
-            processed += 1;
+            })
+
+            processed += 1
+
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             logger.error(`createTask import failed at sheet row ${g.startRow}`, { name: g.name, error: msg });
@@ -508,7 +506,23 @@ export const sendRemaingstatusTomanager = async (): Promise<RemainingStatusResul
                 },
             });
 
-            if (remainingDailyTasks.length === 0) {
+            const declinedDailyTasks = await prisma.dailyTask.findMany({
+                where: {
+                    deletedAt: null,
+                    sent: true,
+                    status: AcceptStatus.decline,
+                    notAttentReason: { not: null },
+                    userId: { in: childIds },
+                },
+                include: {
+                    tasks: {
+                        where: { deletedAt: null },
+                        select: { name: true },
+                    },
+                },
+            });
+
+            if (remainingDailyTasks.length === 0 && declinedDailyTasks.length === 0) {
                 skippedNoRemaining += 1;
                 continue;
             }
@@ -526,13 +540,30 @@ export const sendRemaingstatusTomanager = async (): Promise<RemainingStatusResul
                 })
                 .filter((m): m is { name: string; number: string; tasks: string[] } => m !== null);
 
+            const declined = declinedDailyTasks
+                .map((dt) => {
+                    const child = childById.get(dt.userId);
+                    const reason = dt.notAttentReason?.trim();
+                    if (!child || !reason) return null;
+                    return {
+                        name: child.name,
+                        number: child.number,
+                        tasks: dt.tasks.map((t) => t.name),
+                        reason,
+                    };
+                })
+                .filter(
+                    (m): m is { name: string; number: string; tasks: string[]; reason: string } =>
+                        m !== null,
+                );
+
             const managerPhone = manager.number ? ensureIndiaCountryCode91(manager.number) : "";
             if (!managerPhone) {
                 skippedNoPhone += 1;
                 continue;
             }
 
-            const body = sendManagerRemainingStatusMessage(manager.name, members);
+            const body = sendManagerRemainingStatusMessage(manager.name, members, declined);
             const result = await sendMessageOnWhatsapp({ number: managerPhone, message: body });
 
             if (result.success) {
@@ -792,6 +823,7 @@ export const sendStartTask = async (taskIds: string[]): Promise<TaskResult> => {
                 id: true,
                 name: true,
                 description: true,
+                rawStartTime: true,
                 user: {
                     select: {
                         id: true,
@@ -822,7 +854,11 @@ export const sendStartTask = async (taskIds: string[]): Promise<TaskResult> => {
 
             const result = await sendWhatsAppButtons({
                 number: phone,
-                message: userFollowUpTaskMessage(task),
+                message: userFollowUpTaskMessage({
+                    name: task.name,
+                    description: task.description,
+                    rawStartTime: task.rawStartTime,
+                }),
                 buttons: [
                     { title: "On Track", id: `start_${task.id}` },
                     { title: "Remark", id: `taskquery_${task.id}` },
@@ -1204,21 +1240,47 @@ export const handleFollowUpReply = async (whatsappFrom: string, text: string): P
         }
 
         if (pending.step === "extraTime") {
-            const saved = await updateExtraTime(pending.taskId, phone, clean);
+            const saved = await handleExtratime(pending.taskId, phone, clean);
             if (saved) clearPendingFollowUp(user.id);
-            return true;
+            return saved;
         }
 
         if (pending.step === "remarkReason") {
             await prisma.task.update({
                 where: { id: pending.taskId },
-                data: { remarkReason: clean },
+                data: { remarkReason: clean, status: TaskStaus.remark },
             });
             clearPendingFollowUp(user.id);
             await sendMessageOnWhatsapp({
                 number: phone,
                 message: "Thank you! Remark reason saved.",
             });
+
+            if (user.parentId) {
+                const manager = await prisma.user.findFirst({
+                    where: { id: user.parentId, role: Role.manager, deletedAt: null },
+                });
+                const managerPhone = manager?.number ? ensureIndiaCountryCode91(manager.number) : "";
+                if (manager && managerPhone) {
+                    const msg = taskremarkresontoManager(
+                        manager.name,
+                        user.name,
+                        whatsappFrom,
+                        task.name,
+                        clean,
+                    );
+                    const mgrResult = await sendMessageOnWhatsapp({
+                        number: managerPhone,
+                        message: msg,
+                    });
+                    if (!mgrResult.success) {
+                        logger.warn(
+                            `remark reason to manager failed manager=${manager.number} detail=${mgrResult.message}`,
+                        );
+                    }
+                }
+            }
+
             return true;
         }
 
@@ -1242,28 +1304,71 @@ export const handleInProgressTask = async (taskId: string, phone: string, answer
     });
 };
 
-export const updateExtraTime = async (
-    taskId: string,
-    phone: string,
-    time: string,
-): Promise<boolean> => {
-    const resultTime = convertUserTimeToHour(time);
-    if (!resultTime) {
+const handleExtratime = async (id: string, from: string, etime: string): Promise<boolean> => {
+    try {
+        const resultTime = convertUserTimeToMinutes(etime);
+        if (!resultTime || resultTime <= 0) {
+            await sendMessageOnWhatsapp({
+                number: from,
+                message: "Invalid time. Please send again (e.g. 1hour, 30min, 1kalak).",
+            });
+            return false;
+        }
+
+        const extraTimeMs = resultTime * 60_000;
+
+        const currentTask = await prisma.task.findFirst({
+            where: { id, deletedAt: null },
+            select: { startAt: true, endAt: true, dailyTaskId: true },
+        });
+
+        if (!currentTask) {
+            await sendMessageOnWhatsapp({ number: from, message: "Task not found." });
+            return false;
+        }
+
+        const nextTasks = await prisma.task.findMany({
+            where: {
+                dailyTaskId: currentTask.dailyTaskId,
+                deletedAt: null,
+                startAt: { gt: currentTask.startAt },
+            },
+            orderBy: { startAt: "asc" },
+        });
+
+        const newEnd = new Date(currentTask.endAt.getTime() + extraTimeMs);
+
+        await prisma.$transaction(async (tx) => {
+            await tx.task.update({
+                where: { id },
+                data: {
+                    extratTme: resultTime,
+                    endAt: newEnd,
+                },
+            });
+
+            for (const task of nextTasks) {
+                await tx.task.update({
+                    where: { id: task.id },
+                    data: {
+                        startAt: new Date(task.startAt.getTime() + extraTimeMs),
+                        endAt: new Date(task.endAt.getTime() + extraTimeMs),
+                    },
+                });
+            }
+        });
+
         await sendMessageOnWhatsapp({
-            number: phone,
-            message: "Invalid time. Please send again (e.g. 1hour, 30min, 1kalak).",
+            number: from,
+            message: "Thank you! Extra time saved.",
+        });
+        return true;
+    } catch (error) {
+        logger.error("Error in handle Extra time in task", error);
+        await sendMessageOnWhatsapp({
+            number: from,
+            message: "Could not save extra time. Please try again.",
         });
         return false;
     }
-
-    await prisma.task.update({
-        where: { id: taskId },
-        data: { extratTme: resultTime },
-    });
-
-    await sendMessageOnWhatsapp({
-        number: phone,
-        message: "Thank you! Extra time saved.",
-    });
-    return true;
 };

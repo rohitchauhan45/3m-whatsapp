@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { LayoutDashboard, Settings, Menu, Users, ArrowRight, X, LogOut, ChevronsLeft, ChevronsRight, ClipboardList } from 'lucide-react';
 import { useAuth, isAdmin } from '@/lib/utils/auth';
@@ -22,11 +23,9 @@ export default function DashboardLayout({
     const isActive = pathname === path;
     const showLabel = !collapsed;
     return (
-      <button
-        onClick={() => {
-          router.push(path);
-          setIsMobileMenuOpen(false);
-        }}
+      <Link
+        href={path}
+        onClick={() => setIsMobileMenuOpen(false)}
         className={`w-full flex items-center justify-start px-3 py-3 rounded-xl transition-all duration-200 group ${
           isActive
             ? 'bg-gray-100 text-gray-900 font-semibold shadow-sm'
@@ -37,7 +36,7 @@ export default function DashboardLayout({
           <Icon size={20} className={`${isActive ? 'text-gray-900' : 'text-gray-400 group-hover:text-gray-900'} transition-colors`} />
           {showLabel && <span className="text-[14px]">{label}</span>}
         </div>
-      </button>
+      </Link>
     );
   };
 
@@ -124,13 +123,14 @@ export default function DashboardLayout({
 
             {/* Bottom Section */}
             <div className={`p-4 border-t border-gray-100 space-y-2 bg-white ${isCollapsed ? 'md:px-2 md:py-3' : ''}`}>
-              <button 
-                onClick={() => { router.push('/settings'); setIsMobileMenuOpen(false); }}
+              <Link
+                href="/settings"
+                onClick={() => setIsMobileMenuOpen(false)}
                 className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'} px-4 py-3 text-gray-600 hover:bg-gray-50 rounded-xl transition-colors ${isCollapsed ? 'md:px-2 md:py-2.5' : ''}`}
               >
                 <Settings size={18} className="text-gray-400" />
                 {!isCollapsed && <span className="text-[14px]">Settings</span>}
-              </button>
+              </Link>
               
               <button 
                 onClick={handleLogout}

@@ -150,7 +150,6 @@ export async function getManagerTasks(managerId: string): Promise<ManagerTasksRe
     return { success: true, status: 200, message: "OK", days };
 }
 
-
 export const getAllManagers = async () => {
     try {
         const managers = await prisma.user.findMany({

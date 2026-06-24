@@ -1,16 +1,4 @@
-import axios from "axios";
-import { getToken } from "./authService";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_AUTH_SERVER_URL || "http://localhost:4000";
-
-const api = axios.create({ baseURL: API_URL });
-
-api.interceptors.request.use((config) => {
-  const token = getToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+import { apiClient } from '@/lib/api/client';
 
 // ─── Types ───
 
@@ -67,7 +55,7 @@ export interface FollowUpResponse {
 // ─── API calls ───
 
 export async function fetchAllTasks(): Promise<GetAllTasksResponse> {
-  const { data } = await api.get<GetAllTasksResponse>("/api/v1/admin/tasks");
+  const { data } = await apiClient.get<GetAllTasksResponse>('/admin/tasks');
   return data;
 }
 
@@ -79,23 +67,23 @@ export function formatUploadErrorMessage(res: CreateTaskResponse): string {
       parts.push(`Row ${row.row}: ${row.reason}`);
     }
   }
-  return parts.join("\n") || "Upload failed";
+  return parts.join('\n') || 'Upload failed';
 }
 
 export async function uploadTaskFile(file: File): Promise<CreateTaskResponse> {
   const formData = new FormData();
-  formData.append("assignTask", file);
+  formData.append('assignTask', file);
   try {
-    const res = await api.post("/api/v1/task/create-task", formData, {
+    const res = await apiClient.post('/task/create-task', formData, {
       validateStatus: () => true,
     });
     const data = res.data as Partial<CreateTaskResponse & ApiErrorResponse>;
 
-    if (typeof data?.success === "boolean") {
+    if (typeof data?.success === 'boolean') {
       return {
         success: data.success,
         status: data.status ?? res.status,
-        message: data.message || "Upload finished",
+        message: data.message || 'Upload finished',
         processed: data.processed ?? 0,
         failedRows: data.failedRows ?? [],
       };
@@ -114,7 +102,7 @@ export async function uploadTaskFile(file: File): Promise<CreateTaskResponse> {
       failedRows: [{ row: 0, reason: message }],
     };
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : "Upload failed";
+    const message = e instanceof Error ? e.message : 'Upload failed';
     return {
       success: false,
       status: 500,
@@ -126,6 +114,8 @@ export async function uploadTaskFile(file: File): Promise<CreateTaskResponse> {
 }
 
 export async function sendFollowUp(managerId: string): Promise<FollowUpResponse> {
-  const { data } = await api.post<FollowUpResponse>(`/api/v1/task/manager/${managerId}/follow-up`);
+  const { data } = await apiClient.post<FollowUpResponse>(
+    `/task/manager/${managerId}/follow-up`,
+  );
   return data;
 }

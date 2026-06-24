@@ -1,5 +1,12 @@
-export const userFollowUpTaskMessage = (task: { name: string; description: string | null }): string => {
+export const userFollowUpTaskMessage = (task: {
+    name: string;
+    description: string | null;
+    rawStartTime?: string;
+}): string => {
     const lines: string[] = [`🔔 *${task.name.trim()}*`];
+    if (task.rawStartTime?.trim()) {
+        lines.push(`⏰ Starts at *${task.rawStartTime.trim()}*`);
+    }
     if (task.description?.trim()) {
         lines.push(`📝 ${task.description.trim()}`);
     }
@@ -34,4 +41,22 @@ export const managerFollowUpSummaryMessage = (
 
 export const userInprogressTask = (): string => {
     return "⏳ How much of this task is complete? Reply with % or status.";
+};
+
+export const taskremarkresontoManager = (
+    manager: string,
+    user: string,
+    number: string,
+    task: string,
+    reason: string,
+): string => {
+    const taskShort = task.trim().length > 14 ? task.trim().slice(0, 14) : task.trim();
+    const lines: string[] = [];
+    lines.push(`👋 Hi *${manager.trim()}*`);
+    lines.push("");
+    lines.push("📝 *Task remark*");
+    lines.push(`*${user.trim()}* (${number.trim()})`);
+    lines.push(`📌 ${taskShort}`);
+    lines.push(`💬 ${reason.trim()}`);
+    return lines.join("\n");
 };

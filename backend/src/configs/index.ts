@@ -138,4 +138,3 @@ class Config {
 }
 
 export default Config.getInstance().config;
-

@@ -1,16 +1,4 @@
-import axios from "axios";
-import { getToken } from "./authService";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_AUTH_SERVER_URL || "http://localhost:4000";
-
-const api = axios.create({ baseURL: API_URL });
-
-api.interceptors.request.use((config) => {
-  const token = getToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+import { apiClient } from '@/lib/api/client';
 
 export interface CronJob {
   id: string;
@@ -36,11 +24,18 @@ export interface UpdateCronResponse {
 }
 
 export async function fetchCronjobs(): Promise<CronJobResponse> {
-  const { data } = await api.get<CronJobResponse>("/api/v1/admin/cronjobs");
+  const { data } = await apiClient.get<CronJobResponse>('/admin/cronjobs');
   return data;
 }
 
-export async function updateCronjob(id: string, name: string, time: string): Promise<UpdateCronResponse> {
-  const { data } = await api.put<UpdateCronResponse>(`/api/v1/admin/cronjobs/${id}`, { name, time });
+export async function updateCronjob(
+  id: string,
+  name: string,
+  time: string,
+): Promise<UpdateCronResponse> {
+  const { data } = await apiClient.put<UpdateCronResponse>(`/admin/cronjobs/${id}`, {
+    name,
+    time,
+  });
   return data;
 }

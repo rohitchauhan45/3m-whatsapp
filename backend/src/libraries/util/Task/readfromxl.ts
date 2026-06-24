@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { calendarDateFromParts } from "./istDate";
 
 export function normalizeHeader(h: string): string {
     return String(h).trim().toLowerCase().replace(/\s+/g, "");
@@ -25,20 +26,9 @@ export function stringCell(v: unknown): string {
     return String(v).trim();
 }
 
-/** Excel time cells are often serial numbers or Date objects; normalize to strings like `9am`. */
+/** Excel time cells are often serial numbers; normalize to strings like `9am`. */
 export function formatSheetTimeCell(raw: unknown): string {
     if (raw === undefined || raw === null || raw === "") return "";
-    if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
-        let hour = raw.getHours();
-        const minute = raw.getMinutes();
-        const period = hour >= 12 ? "pm" : "am";
-        if (hour > 12) hour -= 12;
-        if (hour === 0) hour = 12;
-        if (minute > 0) {
-            return `${hour}:${String(minute).padStart(2, "0")}${period}`;
-        }
-        return `${hour}${period}`;
-    }
     if (typeof raw === "number" && Number.isFinite(raw)) {
         const p = XLSX.SSF.parse_date_code(raw);
         if (p) {
@@ -52,6 +42,17 @@ export function formatSheetTimeCell(raw: unknown): string {
             }
             return `${hour}${period}`;
         }
+    }
+    if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+        let hour = raw.getUTCHours();
+        const minute = raw.getUTCMinutes();
+        const period = hour >= 12 ? "pm" : "am";
+        if (hour > 12) hour -= 12;
+        if (hour === 0) hour = 12;
+        if (minute > 0) {
+            return `${hour}:${String(minute).padStart(2, "0")}${period}`;
+        }
+        return `${hour}${period}`;
     }
     return stringCell(raw);
 }
@@ -79,45 +80,53 @@ export function getRawByHeader(row: Record<string, unknown>, header: string): un
     return undefined;
 }
 
-export function parseSheetDateString(s: string): Date | null {
+function parseCalendarPartsFromString(s: string): { y: number; m: number; d: number } | null {
     const t = s.trim();
-    const m = t.match(
-        /^(\d{4})-(\d{2})-(\d{2})[,\s]+(\d{1,2})[.:](\d{2})[.:](\d{2})$/
-    );
-    if (m) {
-        const y = Number(m[1]);
-        const mo = Number(m[2]);
-        const d = Number(m[3]);
-        const h = Number(m[4]);
-        const mi = Number(m[5]);
-        const se = Number(m[6]);
-        const dt = new Date(y, mo - 1, d, h, mi, se);
-        return Number.isNaN(dt.getTime()) ? null : dt;
+
+    const dmy = t.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (dmy) {
+        return { d: Number(dmy[1]), m: Number(dmy[2]), y: Number(dmy[3]) };
     }
-    const fallback = new Date(t);
-    return Number.isNaN(fallback.getTime()) ? null : fallback;
+
+    const ymd = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (ymd) {
+        return { y: Number(ymd[1]), m: Number(ymd[2]), d: Number(ymd[3]) };
+    }
+
+    return null;
 }
 
+/**
+ * Read the calendar date from Excel exactly as shown (e.g. 19-06-2026 → 19 June 2026).
+ * Stored as UTC midnight so the day never shifts.
+ */
 export function normalizeSheetDate(raw: unknown): Date | null {
     if (raw === undefined || raw === null || raw === "") return null;
-    if (raw instanceof Date) {
-        return Number.isNaN(raw.getTime()) ? null : raw;
-    }
+
     if (typeof raw === "number" && Number.isFinite(raw)) {
         const p = XLSX.SSF.parse_date_code(raw);
-        if (p) return new Date(p.y, p.m - 1, p.d, p.H ?? 0, p.M ?? 0, p.S ?? 0);
-        const d = new Date(raw);
-        return Number.isNaN(d.getTime()) ? null : d;
+        if (p) return calendarDateFromParts(p.y, p.m, p.d);
+        return null;
     }
+
     if (typeof raw === "string" && raw.trim()) {
-        const s = raw.trim();
-        const dmy = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
-        if (dmy) {
-            const dt = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+        const parts = parseCalendarPartsFromString(raw);
+        if (parts) {
+            const dt = calendarDateFromParts(parts.y, parts.m, parts.d);
             return Number.isNaN(dt.getTime()) ? null : dt;
         }
-        return parseSheetDateString(s);
+        return null;
     }
+
+    if (raw instanceof Date) {
+        if (Number.isNaN(raw.getTime())) return null;
+        return calendarDateFromParts(
+            raw.getUTCFullYear(),
+            raw.getUTCMonth() + 1,
+            raw.getUTCDate()
+        );
+    }
+
     return null;
 }
 
@@ -268,7 +277,8 @@ export type ReadAssignTaskSheetResult =
     | { ok: false; message: string; status: number };
 
 export function readAssignTaskExcelSheetRows(buffer: Buffer): ReadAssignTaskSheetResult {
-    const wb = XLSX.read(buffer, { type: "buffer", cellDates: true });
+    // Keep raw Excel serial numbers — cellDates:true converts to JS Date in server timezone and shifts the day.
+    const wb = XLSX.read(buffer, { type: "buffer", cellDates: false });
     const sheetName = wb.SheetNames[0];
     if (!sheetName) {
         return { ok: false, message: "Workbook has no sheets", status: 400 };

@@ -51,21 +51,41 @@ export const sendManagerSummaryofAssisgnMessage = (
     return lines.join("\n");
 };
 
+const trimTaskName = (name: string): string => {
+    const t = name.trim();
+    return t.length > 14 ? t.slice(0, 14) : t;
+};
+
 export const sendManagerRemainingStatusMessage = (
     managerName: string,
     members: { name: string; number: string; tasks: string[] }[],
+    declined: { name: string; number: string; tasks: string[]; reason: string }[] = [],
 ): string => {
     const lines: string[] = [];
     lines.push(`👋 Hi *${managerName.trim()}*`);
     lines.push("");
-    lines.push("⏳ *Pending responses* — not accepted/declined yet:");
-    lines.push("");
 
-    members.forEach((m, i) => {
-        lines.push(`${i + 1}. *${m.name.trim()}* (${m.number})`);
+    if (members.length > 0) {
+        lines.push("⏳ *Pending responses* — not accepted/declined yet:");
         lines.push("");
-    });
+        members.forEach((m, i) => {
+            lines.push(`${i + 1}. *${m.name.trim()}* (${m.number})`);
+            lines.push("");
+        });
+        lines.push(`👥 Total: *${members.length}* member(s) remaining.`);
+        lines.push("");
+    }
 
-    lines.push(`👥 Total: *${members.length}* member(s) remaining.`);
-    return lines.join("\n");
+    if (declined.length > 0) {
+        lines.push("❌ *Declined — with reason:*");
+        lines.push("");
+        declined.forEach((m, i) => {
+            lines.push(`${i + 1}. *${m.name.trim()}* (${m.number})`);
+            m.tasks.forEach((t) => lines.push(`   📌 ${trimTaskName(t)}`));
+            lines.push(`   💬 ${m.reason.trim()}`);
+            lines.push("");
+        });
+    }
+
+    return lines.join("\n").trimEnd();
 };

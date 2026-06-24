@@ -1,27 +1,7 @@
-const AUTH_SERVER_URL =
-  process.env.NEXT_PUBLIC_AUTH_SERVER_URL || "http://localhost:4000";
-
-/**
- * Safely parse JSON response, handling empty or invalid responses
- */
-async function parseJsonResponse(response: Response): Promise<any> {
-  const contentType = response.headers.get("content-type");
-
-  if (contentType && contentType.includes("application/json")) {
-    try {
-      const text = await response.text();
-      return text ? JSON.parse(text) : {};
-    } catch (error) {
-      // If JSON parsing fails, return empty object
-      return {};
-    }
-  }
-
-  return {};
-}
+import { apiClient, getApiErrorMessage } from '@/lib/api/client';
 
 export interface LoginCredentials {
-  identifier: string; // email or username
+  identifier: string;
   password: string;
 }
 
@@ -61,231 +41,134 @@ export interface ApiMessage {
   message: string;
 }
 
-/**
- * Login user with email/username and password
- */
-export async function login(
-  credentials: LoginCredentials,
-): Promise<AuthResponse> {
-  const response = await fetch(`${AUTH_SERVER_URL}/api/v1/auth/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(credentials),
-  });
-
-  const data = await parseJsonResponse(response);
-
-  if (!response.ok) {
-    throw new Error(data.error || data.message || "Login failed");
+export async function login(credentials: LoginCredentials): Promise<AuthResponse> {
+  try {
+    const { data } = await apiClient.post<AuthResponse>('/auth/login', credentials);
+    return data;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, 'Login failed'));
   }
-
-  return data as AuthResponse;
 }
 
-/**
- * Sign up a new user
- */
 export async function signup(data: SignupData): Promise<AuthResponse> {
-  const response = await fetch(`${AUTH_SERVER_URL}/api/v1/auth/signup`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  });
-
-  const result = await parseJsonResponse(response);
-
-  if (!response.ok) {
-    throw new Error(result.error || result.message || "Signup failed");
-  }
-
-  // If verification is required, return the response with that info
-  if (result.requires_verification) {
+  try {
+    const { data: result } = await apiClient.post<AuthResponse>('/auth/signup', data);
     return result;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, 'Signup failed'));
   }
-
-  return result as AuthResponse;
 }
 
-/**
- * Verify email with verification code
- */
-export async function verifyEmail(
-  email: string,
-  code?: string
-): Promise<AuthResponse> {
-  const response = await fetch(`${AUTH_SERVER_URL}/api/v1/auth/verify-email`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(code ? { email, code } : { email }),
-  });
-
-  const data = await parseJsonResponse(response);
-
-  if (!response.ok) {
-    throw new Error(data.error || data.message || "Email verification failed");
+export async function verifyEmail(email: string, code?: string): Promise<AuthResponse> {
+  try {
+    const { data } = await apiClient.post<AuthResponse>(
+      '/auth/verify-email',
+      code ? { email, code } : { email },
+    );
+    return data;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, 'Email verification failed'));
   }
-
-  return data as AuthResponse;
 }
 
-/**
- * Resend verification code
- */
 export async function resendVerification(email: string): Promise<void> {
-  const response = await fetch(
-    `${AUTH_SERVER_URL}/api/v1/auth/resend-verification`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email }),
-    },
-  );
-
-  const data = await parseJsonResponse(response);
-
-  if (!response.ok) {
-    throw new Error(data.error || data.message || "Failed to resend verification code");
+  try {
+    await apiClient.post('/auth/resend-verification', { email });
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, 'Failed to resend verification code'));
   }
 }
 
-/**
- * Get current user profile (requires token)
- */
-export async function getMe(token: string): Promise<AuthResponse["user"]> {
-  const response = await fetch(`${AUTH_SERVER_URL}/api/v1/auth/me`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  const data = await parseJsonResponse(response);
-
-  if (!response.ok) {
-    throw new Error(data.error || data.message || "Failed to get user profile");
+export async function getMe(token: string): Promise<AuthResponse['user']> {
+  try {
+    const { data } = await apiClient.get<AuthResponse['user']>('/auth/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, 'Failed to get user profile'));
   }
-
-  return data;
 }
 
-/**
- * Request password reset email
- */
-export async function forgotPassword(email: string): Promise<{ success: boolean; message: string; token?: string }> {
-  const response = await fetch(`${AUTH_SERVER_URL}/api/v1/auth/forget-password`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ email }),
-  });
-
-  const data = await parseJsonResponse(response);
-
-  if (!response.ok) {
-    throw new Error(data.error || data.message || "Failed to send reset link");
+export async function forgotPassword(
+  email: string,
+): Promise<{ success: boolean; message: string; token?: string }> {
+  try {
+    const { data } = await apiClient.post<{ success: boolean; message: string; token?: string }>(
+      '/auth/forget-password',
+      { email },
+    );
+    return data;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, 'Failed to send reset link'));
   }
-
-  return data as { success: boolean; message: string; token?: string };
 }
 
-/**
- * Reset password using token from email
- */
 export async function resetPassword(
   token: string,
   password: string,
 ): Promise<{ success: boolean; message: string }> {
-  const response = await fetch(`${AUTH_SERVER_URL}/api/v1/auth/reset-password`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ token, password }),
-  });
-
-  const data = await parseJsonResponse(response);
-
-  if (!response.ok) {
-    throw new Error(data.error || data.message || "Failed to reset password");
+  try {
+    const { data } = await apiClient.post<{ success: boolean; message: string }>(
+      '/auth/reset-password',
+      { token, password },
+    );
+    return data;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, 'Failed to reset password'));
   }
-
-  return data as { success: boolean; message: string };
 }
 
-//verify-otp
-export async function verifyOtp(token: string, otp: number): Promise<{ success: boolean; message: string; userId?: string; userRole?: string; email?: string }> {
-  const response = await fetch(`${AUTH_SERVER_URL}/api/v1/auth/verify-otp`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ token, otp }),
-  });
-  const data = await parseJsonResponse(response);
-  if (!response.ok) {
-    throw new Error(data.error || data.message || "Failed to verify otp");
+export async function verifyOtp(
+  token: string,
+  otp: number,
+): Promise<{
+  success: boolean;
+  message: string;
+  userId?: string;
+  userRole?: string;
+  email?: string;
+}> {
+  try {
+    const { data } = await apiClient.post<{
+      success: boolean;
+      message: string;
+      userId?: string;
+      userRole?: string;
+      email?: string;
+    }>('/auth/verify-otp', { token, otp });
+    return data;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, 'Failed to verify otp'));
   }
-  return data as { success: boolean; message: string; userId?: string; userRole?: string; email?: string };
 }
 
-/**
- * Verify email when user clicks emailed link (?token=)
- */
 export async function verifyToken(token: string): Promise<AuthResponse> {
-  const response = await fetch(
-    `${AUTH_SERVER_URL}/api/v1/auth/verify-email?token=${token}`,
-    {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    },
-  );
-
-  const data = await parseJsonResponse(response);
-
-  if (!response.ok) {
-    throw new Error(data.error || data.message || "Failed to verify email");
+  try {
+    const { data } = await apiClient.get<AuthResponse>('/auth/verify-email', {
+      params: { token },
+    });
+    return data;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, 'Failed to verify email'));
   }
-
-  return data as AuthResponse;
 }
 
-/**
- * Store token in localStorage
- */
 export function storeToken(token: string): void {
-  if (typeof window !== "undefined") {
-    localStorage.setItem("auth_token", token);
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('auth_token', token);
   }
 }
 
-/**
- * Get token from localStorage
- */
 export function getToken(): string | null {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("auth_token");
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('auth_token');
   }
   return null;
 }
 
-/**
- * Remove token from localStorage
- */
 export function removeToken(): void {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem("auth_token");
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('auth_token');
   }
 }
-

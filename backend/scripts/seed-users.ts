@@ -36,33 +36,7 @@ async function seedUsers() {
       logger.info("Admin user already exists");
       console.log("\n⚠️  Admin user already exists");
     }
-
-    // Create normal user
-    // if (!existingUser) {
-    //   const userPassword = await bcrypt.hash("user123", 10);
-    //   const user = await prisma.user.create({
-    //     data: {
-    //       username: "user",
-    //       email: "user@example.com",
-    //       password: userPassword,
-    //       name: "Normal User",
-    //       role: "user",
-    //     },
-    //   });
-    //   logger.info("Normal user created:", {
-    //     id: user.id,
-    //     username: user.username,
-    //     email: user.email,
-    //   });
-    //   console.log("\n✅ Normal user created:");
-    //   console.log("   Email: user@example.com");
-    //   console.log("   Username: user");
-    //   console.log("   Password: user123");
-    // } else {
-    //   logger.info("Normal user already exists");
-    //   console.log("\n⚠️  Normal user already exists");
-    // }
-
+    
     // Seed default cronjobs (id and name both start with "default_")
     const defaultCronjobs = [
       { id: "default_task_assign_time", name: "default_task_assign_time", time: "0 21 * * *" },
@@ -95,5 +69,3 @@ async function seedUsers() {
 }
 
 seedUsers();
-
-

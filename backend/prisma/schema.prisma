@@ -115,7 +115,7 @@ model Task {
   
   // task time to complete
   actualTime       String?
-  extratTme        String?
+  extratTme        Int?
   totalTime        String?
 
   //assign details
