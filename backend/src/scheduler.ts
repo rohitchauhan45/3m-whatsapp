@@ -19,7 +19,7 @@ let remainingStatusTimeout: NodeJS.Timeout | null = null;
 const DEFAULT_ASSIGN_TIME = "0 21 * * *";
 const DEFAULT_ONTRACK_TIME = "0 7 * * *";
 /** Every minute — follow-up sends only tasks whose startAt matches current time. */
-const FOLLOWUP_EVERY_MINUTE = "* * * * *";
+const FOLLOWUP_EVERY_MINUTE = "*/10 * * * *";
 const REMAINING_STATUS_DELAY_MS = 3 * 60 * 1000;
 const START_TASK_EARLY_TIME = 4 * 60 * 1000;
 
