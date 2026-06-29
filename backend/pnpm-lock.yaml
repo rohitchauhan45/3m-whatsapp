@@ -68,6 +68,9 @@ importers:
       pg:
         specifier: ^8.16.3
         version: 8.16.3
+      prisma:
+        specifier: ^7.0.1
+        version: 7.0.1(@types/react@19.2.7)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
       ulid:
         specifier: ^2.3.0
         version: 2.4.0
@@ -150,9 +153,6 @@ importers:
       prettier:
         specifier: ^3.4.2
         version: 3.7.4
-      prisma:
-        specifier: ^7.0.1
-        version: 7.0.1(@types/react@19.2.7)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
       supertest:
         specifier: ^6.3.4
         version: 6.3.4
@@ -1961,7 +1961,7 @@ packages:
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
-    deprecated: Glob versions prior to v9 are no longer supported
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   globals@14.0.0:
     resolution: {integrity: sha512-oahGvuMGQlPw/ivIYBjVSrWAfWLBeku5tpPE2fOPLi+WHffIWbuh2tCjhyQhTBPMf5E9jDEH4FOmTYgYwbKwtQ==}
