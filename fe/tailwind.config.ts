@@ -43,7 +43,7 @@ const config: Config = {
         }
       },
       fontFamily: {
-        sans: ['Poppins', 'sans-serif'],
+        sans: ['var(--font-poppins)', 'sans-serif'],
       },
       backgroundImage: {
         'brand-gradient': 'linear-gradient(135deg, #0870e4 0%, #3B9EFF 100%)',
