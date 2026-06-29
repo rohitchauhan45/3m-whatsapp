@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Send, Loader2, Upload, CheckCircle2, XCircle, Clock, FileCheck, Users, Calendar } from 'lucide-react';
+import { Plus, Loader2, Upload, CheckCircle2, XCircle, Clock, FileCheck, Users, Calendar } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/utils/auth';
+import { useToast } from '@/lib/providers/toast-provider';
 import { usePageHeader } from '@/lib/utils/page-header-context';
 import {
   fetchAllTasks,
@@ -26,7 +27,7 @@ export default function TasksPage() {
   const queryClient = useQueryClient();
   const [selectedDay, setSelectedDay] = useState<AdminTaskDay | null>(null);
   const [view, setView] = useState<View>('list');
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const { showToast, showError } = useToast();
   const [dragOver, setDragOver] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -42,14 +43,14 @@ export default function TasksPage() {
     mutationFn: uploadTaskFile,
     onSuccess: (res) => {
       const fullMessage = formatUploadErrorMessage(res);
-      setToast({ message: fullMessage, type: res.success ? 'success' : 'error' });
+      showToast(fullMessage, res.success ? 'success' : 'error');
       if (res.success) {
         invalidateAdminTasks(queryClient);
         invalidateDashboardQueries(queryClient);
       }
     },
     onError: (err: Error) => {
-      setToast({ message: err.message, type: 'error' });
+      showError(err.message);
     },
   });
 
@@ -70,13 +71,6 @@ export default function TasksPage() {
     }
     return () => { setBreadcrumb(null); setOnBack(null); };
   }, [view]);
-
-  useEffect(() => {
-    if (toast) {
-      const t = setTimeout(() => setToast(null), 5000);
-      return () => clearTimeout(t);
-    }
-  }, [toast]);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -197,7 +191,6 @@ export default function TasksPage() {
           </div>
         )}
 
-        {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       </div>
     );
   }
@@ -238,7 +231,6 @@ export default function TasksPage() {
           ))}
         </div>
 
-        {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       </div>
     );
   }
@@ -302,22 +294,6 @@ export default function TasksPage() {
         </div>
       )}
 
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-    </div>
-  );
-}
-
-function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
-  return (
-    <div className="fixed top-6 right-6 z-50 animate-slide-up">
-      <div className={`flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-lg border ${type === 'success'
-        ? 'bg-white border-green-200 text-green-800'
-        : 'bg-white border-red-200 text-red-800'
-        }`}>
-        {type === 'success' ? <CheckCircle2 size={18} className="text-green-500" /> : <XCircle size={18} className="text-red-500" />}
-        <span className="text-sm font-medium whitespace-pre-wrap max-w-md">{message}</span>
-        <button onClick={onClose} className="ml-2 text-gray-400 hover:text-gray-600">×</button>
-      </div>
     </div>
   );
 }

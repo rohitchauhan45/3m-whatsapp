@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import ConfigurableAuthLayout from '@/components/layout/ConfigurableAuthLayout';
+import { useToast } from '@/lib/providers/toast-provider';
 import { useAuth } from '@/lib/utils/auth';
 import {
   resendVerification,
@@ -14,7 +15,7 @@ import { getAuthConfig } from '@/lib/config';
 
 export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { showError, hideToast } = useToast();
   const [name, setName] = useState('');
   const [number, setNumber] = useState('');
   const [email, setEmail] = useState('');
@@ -29,7 +30,7 @@ export default function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError(null);
+    hideToast();
     setIsLoading(true);
 
     try {
@@ -47,7 +48,7 @@ export default function SignupPage() {
         router.push('/dashboard');
       }
     } catch (err) {
-      setError(
+      showError(
         err instanceof Error
           ? err.message
           : 'Signup failed. Please try again.',
@@ -59,7 +60,7 @@ export default function SignupPage() {
 
   const handleVerifyEmail = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError(null);
+    hideToast();
     setIsLoading(true);
 
     try {
@@ -68,10 +69,10 @@ export default function SignupPage() {
         login(response.token, response.user);
         router.push('/dashboard');
       } else {
-        setError('Verification failed. Please try again.');
+        showError('Verification failed. Please try again.');
       }
     } catch (err) {
-      setError(
+      showError(
         err instanceof Error
           ? err.message
           : 'Verification failed. Please try again.',
@@ -82,11 +83,11 @@ export default function SignupPage() {
   };
 
   const handleResendCode = async () => {
-    setError(null);
+    hideToast();
     try {
       await resendVerification(email);
     } catch (err) {
-      setError(
+      showError(
         err instanceof Error
           ? err.message
           : 'Failed to resend verification code.',
@@ -96,12 +97,6 @@ export default function SignupPage() {
 
   const renderSignupForm = () => (
     <form className="space-y-6" onSubmit={handleSubmit}>
-      {error && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
-
       <div className="space-y-2">
         <label className="text-sm font-medium text-gray-700">
           {formConfig.nameLabel}
@@ -205,12 +200,6 @@ export default function SignupPage() {
 
   const renderVerificationForm = () => (
     <form className="space-y-6" onSubmit={handleVerifyEmail}>
-      {error && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
-
       <div className="rounded-xl border border-brand-primary/20 bg-brand-pastel-purple px-5 py-4 text-sm text-brand-purpleDark">
         We&apos;ve sent a verification code to{' '}
         <span className="font-semibold">{email}</span>. Enter the code below to

@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import ConfigurableAuthLayout from '@/components/layout/ConfigurableAuthLayout';
 import { useAuth } from '@/lib/utils/auth';
+import { useToast } from '@/lib/providers/toast-provider';
 import { login as loginAPI, resendVerification, forgotPassword, verifyOtp, resetPassword } from '@/lib/services/authService';
 import { getAuthConfig } from '@/lib/config';
 
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { showError, showSuccess, hideToast } = useToast();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -22,8 +23,6 @@ export default function LoginPage() {
   // Forgot password modal states
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotError, setForgotError] = useState('');
-  const [forgotSuccess, setForgotSuccess] = useState('');
   const [isSendingReset, setIsSendingReset] = useState(false);
   const [forgotStep, setForgotStep] = useState<'request' | 'verify' | 'reset'>('request');
   const [otp, setOtp] = useState('');
@@ -40,7 +39,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError(null);
+    hideToast();
     setIsLoading(true);
     // Reset email verification state on new login attempt
     setShowEmailVerification(false);
@@ -59,22 +58,19 @@ export default function LoginPage() {
         login(response.token, response.user);
         router.push('/dashboard');
       } else {
-        setError('Unable to sign in. Please try again.');
+        showError('Unable to sign in. Please try again.');
       }
     } catch (err) {
       console.error("Login failed error is : ", err);
       const errorMessage = err instanceof Error ? err.message : 'Login failed. Please try again.';
       
-      // Check if error is about email not being verified
       if (errorMessage.toLowerCase().includes('email not verified')) {
         setShowEmailVerification(true);
-        // Extract email from identifier (could be email or username)
-        // If identifier contains @, it's likely an email
         const email = identifier.includes('@') ? identifier : '';
         setUserEmail(email);
-        setError('Please verify your email to continue.');
+        showError('Please verify your email to continue.');
       } else {
-        setError(errorMessage);
+        showError(errorMessage);
         setShowEmailVerification(false);
       }
     } finally {
@@ -85,13 +81,12 @@ export default function LoginPage() {
   const handleEmailVerificationCheckbox = async (checked: boolean) => {
     if (checked && userEmail && !emailVerificationSent) {
       setIsLoading(true);
-      setError(null);
+      hideToast();
       try {
         await resendVerification(userEmail);
         setEmailVerificationSent(true);
-        setError(null);
       } catch (err) {
-        setError(
+        showError(
           err instanceof Error
             ? err.message
             : 'Failed to send verification email. Please try again.',
@@ -109,8 +104,6 @@ export default function LoginPage() {
 
   const resetForgotPasswordState = () => {
     setForgotEmail('');
-    setForgotError('');
-    setForgotSuccess('');
     setIsSendingReset(false);
     setForgotStep('request');
     setOtp('');
@@ -123,16 +116,15 @@ export default function LoginPage() {
 
   const handleForgotPasswordSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setForgotError('');
-    setForgotSuccess('');
+    hideToast();
 
     if (!forgotEmail.trim()) {
-      setForgotError('Email is required');
+      showError('Email is required');
       return;
     }
 
     if (!validateEmail(forgotEmail.trim())) {
-      setForgotError('Please enter a valid email address');
+      showError('Please enter a valid email address');
       return;
     }
 
@@ -140,16 +132,16 @@ export default function LoginPage() {
     try {
       const response = await forgotPassword(forgotEmail.trim());
       if (response?.success) {
-        setForgotSuccess(response.message || 'OTP sent to your email.');
+        showSuccess(response.message || 'OTP sent to your email.');
         if (response.token) {
           setResetToken(response.token);
         }
         setForgotStep('verify');
       } else {
-        setForgotError(response?.message || 'Unable to send reset instructions.');
+        showError(response?.message || 'Unable to send reset instructions.');
       }
     } catch (error) {
-      setForgotError(error instanceof Error ? error.message : 'Unable to send reset instructions.');
+      showError(error instanceof Error ? error.message : 'Unable to send reset instructions.');
     } finally {
       setIsSendingReset(false);
     }
@@ -157,17 +149,16 @@ export default function LoginPage() {
 
   const handleVerifyOtpSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setForgotError('');
-    setForgotSuccess('');
+    hideToast();
 
     if (!resetToken) {
-      setForgotError('Reset token missing. Please resend OTP.');
+      showError('Reset token missing. Please resend OTP.');
       setForgotStep('request');
       return;
     }
 
     if (!otp.trim()) {
-      setForgotError('OTP is required');
+      showError('OTP is required');
       return;
     }
 
@@ -175,13 +166,13 @@ export default function LoginPage() {
     try {
       const response = await verifyOtp(resetToken, parseInt(otp.trim()));
       if (response?.success) {
-        setForgotSuccess(response.message || 'OTP verified. Please set a new password.');
+        showSuccess(response.message || 'OTP verified. Please set a new password.');
         setForgotStep('reset');
       } else {
-        setForgotError(response?.message || 'Unable to verify OTP.');
+        showError(response?.message || 'Unable to verify OTP.');
       }
     } catch (error) {
-      setForgotError(error instanceof Error ? error.message : 'Unable to verify OTP.');
+      showError(error instanceof Error ? error.message : 'Unable to verify OTP.');
     } finally {
       setIsVerifyingOtp(false);
     }
@@ -189,16 +180,15 @@ export default function LoginPage() {
 
   const handleResetPasswordSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setForgotError('');
-    setForgotSuccess('');
+    hideToast();
 
     if (!newPasswordValue || newPasswordValue.length < 6) {
-      setForgotError('Password must be at least 6 characters');
+      showError('Password must be at least 6 characters');
       return;
     }
 
     if (newPasswordValue !== confirmPasswordValue) {
-      setForgotError('Passwords do not match');
+      showError('Passwords do not match');
       return;
     }
 
@@ -206,17 +196,16 @@ export default function LoginPage() {
     try {
       const response = await resetPassword(resetToken, newPasswordValue);
       if (response?.success) {
-        setError(null);
-        setForgotSuccess(response.message || 'Password reset successfully. Please log in.');
+        showSuccess(response.message || 'Password reset successfully. Please log in.');
         setTimeout(() => {
           setIsForgotModalOpen(false);
           resetForgotPasswordState();
         }, 2000);
       } else {
-        setForgotError(response?.message || 'Unable to reset password.');
+        showError(response?.message || 'Unable to reset password.');
       }
     } catch (error) {
-      setForgotError(error instanceof Error ? error.message : 'Unable to reset password.');
+      showError(error instanceof Error ? error.message : 'Unable to reset password.');
     } finally {
       setIsResettingPassword(false);
     }
@@ -225,12 +214,6 @@ export default function LoginPage() {
   return (
     <ConfigurableAuthLayout config={config} isSignup={false}>
       <form className="space-y-6" onSubmit={handleSubmit}>
-        {error && (
-          <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-            {error}
-          </div>
-        )}
-
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-700">
             {formConfig.emailLabel}
@@ -388,9 +371,6 @@ export default function LoginPage() {
               </button>
             </div>
 
-            {forgotError && <p className="mb-3 text-sm text-red-600">{forgotError}</p>}
-            {forgotSuccess && <p className="mb-3 text-sm text-green-600">{forgotSuccess}</p>}
-
             {forgotStep === 'request' && (
               <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
                 <div>
@@ -454,8 +434,7 @@ export default function LoginPage() {
                     className="w-full sm:w-1/3 py-2.5 rounded-lg border border-gray-300 text-gray-600 font-semibold hover:bg-gray-50"
                     onClick={() => {
                       setForgotStep('request');
-                      setForgotError('');
-                      setForgotSuccess('');
+                      hideToast();
                     }}
                   >
                     Back
@@ -509,8 +488,7 @@ export default function LoginPage() {
                     className="w-full sm:w-1/3 py-2.5 rounded-lg border border-gray-300 text-gray-600 font-semibold hover:bg-gray-50"
                     onClick={() => {
                       setForgotStep('verify');
-                      setForgotError('');
-                      setForgotSuccess('');
+                      hideToast();
                     }}
                   >
                     Back

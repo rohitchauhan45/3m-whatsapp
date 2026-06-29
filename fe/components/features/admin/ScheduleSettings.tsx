@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Clock, Save, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
+import { Clock, Save, RefreshCw } from 'lucide-react';
 import { fetchCronjobs, updateCronjob, CronJob } from '@/lib/services/settingsService';
 import { queryKeys } from '@/lib/query-keys';
 import { cachedQueryOptions } from '@/lib/query-config';
+import { useToast } from '@/lib/providers/toast-provider';
 
 const CRON_LABELS: Record<string, string> = {
   default_task_assign_time: 'Task Assign Time',
@@ -126,7 +127,7 @@ function ScrollColumn({
 
 export default function ScheduleSettings() {
   const queryClient = useQueryClient();
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const { showToast, showError } = useToast();
   const [timeParts, setTimeParts] = useState<Record<string, TimeParts>>({});
 
   const { data, isLoading } = useQuery({
@@ -163,13 +164,6 @@ export default function ScheduleSettings() {
     }
   }, [data]);
 
-  useEffect(() => {
-    if (toast) {
-      const t = setTimeout(() => setToast(null), 5000);
-      return () => clearTimeout(t);
-    }
-  }, [toast]);
-
   const mutation = useMutation({
     mutationFn: ({ id, name, time }: { id: string; name: string; time: string }) =>
       updateCronjob(id, name, time),
@@ -178,7 +172,7 @@ export default function ScheduleSettings() {
         queryKey: queryKeys.cronjobs,
         refetchType: 'active',
       });
-      setToast({ message: res.message, type: res.success ? 'success' : 'error' });
+      showToast(res.message, res.success ? 'success' : 'error');
     },
     onError: (err: unknown) => {
       const msg =
@@ -186,7 +180,7 @@ export default function ScheduleSettings() {
           ?.message ||
         (err as Error)?.message ||
         'Failed to update';
-      setToast({ message: msg, type: 'error' });
+      showError(msg);
     },
   });
 
@@ -269,23 +263,6 @@ export default function ScheduleSettings() {
           </div>
         );
       })}
-
-      {toast && (
-        <div className="fixed top-6 right-6 z-50">
-          <div
-            className={`flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-lg border bg-white ${
-              toast.type === 'success' ? 'border-green-200 text-green-800' : 'border-red-200 text-red-800'
-            }`}
-          >
-            {toast.type === 'success' ? (
-              <CheckCircle2 size={18} className="text-green-500" />
-            ) : (
-              <XCircle size={18} className="text-red-500" />
-            )}
-            <span className="text-sm font-medium">{toast.message}</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
