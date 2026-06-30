@@ -1,6 +1,6 @@
 import { CronJob } from "cron";
 import logger from "./libraries/log/logger";
-import { prisma } from "./libraries/db";
+import { prisma } from "./libraries/db"; 
 import {
     assignTask,
     finalDecisionDailyTask,
@@ -10,6 +10,13 @@ import {
 } from "./domains/Task/service";
 import { AcceptStatus, TaskStaus } from "@prisma/client";
 import { isTaskStartDueEarly, isTaskStartNow } from "./libraries/util/Task/timing";
+import {
+    CRON_SETTING_NAMES,
+    DEFAULT_REMAINING_STATUS_DELAY_MIN,
+    DEFAULT_START_TASK_EARLY_MIN,
+    resolveCronSetting,
+    resolveMinuteSetting,
+} from "./constants/cronSettings";
 
 let assignJob: CronJob | null = null;
 let followUpJob: CronJob | null = null;
@@ -19,16 +26,19 @@ let remainingStatusTimeout: NodeJS.Timeout | null = null;
 const DEFAULT_ASSIGN_TIME = "0 21 * * *";
 const DEFAULT_ONTRACK_TIME = "0 7 * * *";
 /** Every minute — follow-up sends only tasks whose startAt matches current time. */
-const FOLLOWUP_EVERY_MINUTE = "*/10 * * * *";
-const REMAINING_STATUS_DELAY_MS = 3 * 60 * 1000;
-const START_TASK_EARLY_TIME = 4 * 60 * 1000;
+const FOLLOWUP_EVERY_MINUTE = "*/30 * * * *";
+
+let remainingStatusDelayMs = DEFAULT_REMAINING_STATUS_DELAY_MIN * 60 * 1000;
+let startTaskEarlyMs = DEFAULT_START_TASK_EARLY_MIN * 60 * 1000;
 
 function scheduleRemainingStatusToManager() {
     if (remainingStatusTimeout) clearTimeout(remainingStatusTimeout);
     remainingStatusTimeout = setTimeout(() => {
         void runRemainingStatusToManager();
-    }, REMAINING_STATUS_DELAY_MS);
-    logger.info("cron remaining status to manager scheduled in 30 minutes");
+    }, remainingStatusDelayMs);
+    logger.info(
+        `cron remaining status to manager scheduled in ${remainingStatusDelayMs / 60_000} minutes`,
+    );
 }
 
 async function runRemainingStatusToManager() {
@@ -111,7 +121,7 @@ export async function getDueStartTaskIds(managerId?: string): Promise<string[]> 
     });
 
     return tasks
-        .filter((t) => isTaskStartDueEarly(t.startAt, START_TASK_EARLY_TIME, now))
+        .filter((t) => isTaskStartDueEarly(t.startAt, startTaskEarlyMs, now))
         .map((t) => t.id);
 }
 
@@ -146,17 +156,21 @@ export async function readCronjob() {
     try {
         const crons = await prisma.cron.findMany();
 
-        const assignCrons = crons.filter(c => c.name === "default_task_assign_time");
-        const onTrackCrons = crons.filter(c => c.name === "default_task_ontrack_time");
+        assignTime = resolveCronSetting(crons, CRON_SETTING_NAMES.ASSIGN, DEFAULT_ASSIGN_TIME);
+        onTrackTime = resolveCronSetting(crons, CRON_SETTING_NAMES.ONTRACK, DEFAULT_ONTRACK_TIME);
 
-        const adminAssign = assignCrons.find(c => !c.id.startsWith("default_"));
-        const adminOnTrack = onTrackCrons.find(c => !c.id.startsWith("default_"));
-
-        if (adminAssign) assignTime = adminAssign.time;
-        else if (assignCrons.length > 0) assignTime = assignCrons[0].time;
-
-        if (adminOnTrack) onTrackTime = adminOnTrack.time;
-        else if (onTrackCrons.length > 0) onTrackTime = onTrackCrons[0].time;
+        const remainingMin = resolveMinuteSetting(
+            crons,
+            CRON_SETTING_NAMES.REMAINING_STATUS_DELAY,
+            DEFAULT_REMAINING_STATUS_DELAY_MIN,
+        );
+        const startEarlyMin = resolveMinuteSetting(
+            crons,
+            CRON_SETTING_NAMES.START_TASK_EARLY,
+            DEFAULT_START_TASK_EARLY_MIN,
+        );
+        remainingStatusDelayMs = remainingMin * 60 * 1000;
+        startTaskEarlyMs = startEarlyMin * 60 * 1000;
     } catch (err) {
         logger.warn("cron Could not read cron from DB, using defaults", err);
     }
@@ -168,7 +182,7 @@ export async function readCronjob() {
     followUpJob = new CronJob(FOLLOWUP_EVERY_MINUTE, runFollowUpForAll, null, true, "Asia/Kolkata");
     followUpJob.start();
     logger.info(
-        `cron Follow-up scheduled every minute (start tasks send ${START_TASK_EARLY_TIME / 60_000} min before startAt)`,
+        `cron Follow-up scheduled every minute (start tasks send ${startTaskEarlyMs / 60_000} min before startAt)`,
     );
 
     onTrackJob = new CronJob(onTrackTime, runFinalDecisionForAll, null, true, "Asia/Kolkata");

@@ -9,10 +9,11 @@ import {
 } from "../Task/service";
 import logger from "../../libraries/log/logger";
 import dotenv from "dotenv";
+import { attendence } from "../attendence/service";
 
 dotenv.config();
 
-const VERIFY_WEBHOOK_TOKEN = process.env.VERIFY_WEBHOOK_TOKEN ?? process.env.VERFIRY_WEBHOOK_TOKEN;
+const VERIFY_WEBHOOK_TOKEN = process.env.VERIFY_WEBHOOK_TOKEN
 
 const processedMessageIds = new Set<string>();
 
@@ -29,6 +30,15 @@ function rememberMessageId(messageId: string): boolean {
 
 function isRecord(x: unknown): x is Record<string, unknown> {
     return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+
+function parseCoordinate(value: unknown): number | null {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) return parsed;
+    }
+    return null;
 }
 
 /** Meta GET verify: compare token and return challenge on success. */
@@ -66,6 +76,25 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
         return;
     }
 
+    if (type === "location" && isRecord(msg.location)) {
+        const latitude = parseCoordinate(msg.location.latitude);
+        const longitude = parseCoordinate(msg.location.longitude);
+
+        if (latitude === null || longitude === null) {
+            logger.warn(`webhook invalid location payload from=${from}`);
+            return;
+        }
+
+        logger.info(`webhook location from=${from} lat=${latitude} long=${longitude}`);
+
+        try {
+            await attendence(from, latitude, longitude);
+        } catch (err) {
+            logger.error(`webhook attendance failed from=${from}`, err);
+        }
+        return;
+    }
+
     if (type !== "interactive" || !isRecord(msg.interactive)) return;
 
     const interactive = msg.interactive;
@@ -94,7 +123,6 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
     if (action === "ontrack" || action === "no") {
         await updateFinalDecision(id, from, action)
     }
-
 }
 
 /** Meta WhatsApp webhook POST body. */
@@ -122,5 +150,4 @@ export async function handleWebhook(body: unknown): Promise<void> {
             }
         }
     }
-
 }

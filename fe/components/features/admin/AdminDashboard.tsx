@@ -768,7 +768,7 @@ export default function AdminDashboard() {
 
           {/* TIME TAB */}
           {tab === 'time' && (
-            <div className="max-w-xl w-full mx-auto">
+            <div className="w-full max-w-5xl mx-auto">
               <ScheduleSettings />
             </div>
           )}

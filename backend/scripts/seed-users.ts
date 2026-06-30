@@ -41,7 +41,9 @@ async function seedUsers() {
     const defaultCronjobs = [
       { id: "default_task_assign_time", name: "default_task_assign_time", time: "0 21 * * *" },
       { id: "default_task_followup_time", name: "default_task_followup_time", time: "0 10 * * *" },
-      { id: "default_task_ontrack_time", name: "default_task_ontrack_time", time: "0 7 * * *" }
+      { id: "default_task_ontrack_time", name: "default_task_ontrack_time", time: "0 7 * * *" },
+      { id: "default_remaining_status_delay", name: "default_remaining_status_delay", time: "30" },
+      { id: "default_start_task_early", name: "default_start_task_early", time: "10" },
     ];
 
     for (const cj of defaultCronjobs) {

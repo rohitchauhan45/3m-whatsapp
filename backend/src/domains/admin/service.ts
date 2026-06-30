@@ -3,6 +3,7 @@ import { AppError } from "../../libraries/error-handling/AppError";
 import logger from "../../libraries/log/logger";
 import { isValidCron } from "cron-validator";
 import { readCronjob } from "../../scheduler";
+import { isMinuteSettingName, parsePositiveMinutes } from "../../constants/cronSettings";
 import { Role } from "@prisma/client";
 
 interface cronjobData {
@@ -211,9 +212,20 @@ export const getAllCronjobs = async () => {
 export const updateAdminCronjob = async (id: string, data: cronjobData) => {
     try {
         const { name, time, adminId } = data;
+        let normalizedTime = time.trim();
 
-        if (!isValidCron(time)) {
-            return { success: false, status: 400, message: `Invalid cron expression: ${time}` };
+        if (isMinuteSettingName(name)) {
+            const minutes = parsePositiveMinutes(normalizedTime, 0);
+            if (minutes <= 0) {
+                return {
+                    success: false,
+                    status: 400,
+                    message: "Enter a positive number of minutes (e.g. 10, 20, 30)",
+                };
+            }
+            normalizedTime = String(minutes);
+        } else if (!isValidCron(normalizedTime)) {
+            return { success: false, status: 400, message: `Invalid cron expression: ${normalizedTime}` };
         }
 
         if (id.startsWith("default_")) {
@@ -224,32 +236,36 @@ export const updateAdminCronjob = async (id: string, data: cronjobData) => {
             if (adminCron) {
                 const updated = await prisma.cron.update({
                     where: { id: adminCron.id },    
-                    data: { time, updateById: adminId },
+                    data: { time: normalizedTime, updateById: adminId },
                 });
                 await readCronjob();
                 return {
                     success: true,
                     status: 200,
-                    message: `Schedule updated to: ${time}`,
+                    message: isMinuteSettingName(name)
+                        ? `Setting updated to ${normalizedTime} minutes`
+                        : `Schedule updated to: ${normalizedTime}`,
                     data: updated,
                 };
             }
 
             const created = await prisma.cron.create({
-                data: { name, time, updateById: adminId },
+                data: { name, time: normalizedTime, updateById: adminId },
             });
             await readCronjob();
             return {
                 success: true,
                 status: 200,
-                message: `Schedule updated to: ${time}`,
+                message: isMinuteSettingName(name)
+                    ? `Setting updated to ${normalizedTime} minutes`
+                    : `Schedule updated to: ${normalizedTime}`,
                 data: created,
             };
         }
 
         const updated = await prisma.cron.update({
             where: { id },
-            data: { time, updateById: adminId },
+            data: { time: normalizedTime, updateById: adminId },
         });
 
         await readCronjob();
@@ -257,7 +273,9 @@ export const updateAdminCronjob = async (id: string, data: cronjobData) => {
         return {
             success: true,
             status: 200,
-            message: `Schedule updated to: ${time}`,
+            message: isMinuteSettingName(name)
+                ? `Setting updated to ${normalizedTime} minutes`
+                : `Schedule updated to: ${normalizedTime}`,
             data: updated,
         };
     } catch (error: any) {
