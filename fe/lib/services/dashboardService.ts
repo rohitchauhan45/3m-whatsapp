@@ -20,9 +20,11 @@ export const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
 ];
 
 export interface TaskCardData {
-  ontrack: number;
+  inProgress: number;
+  delayedTask: number;
   complete: number;
   remarkTask: number;
+  cancelledTask: number;
   totalTask: number;
 }
 
@@ -38,12 +40,40 @@ export interface DashboardTask {
   name: string;
   rawStartTime: string;
   rawEndTime: string;
-  status: string | null;
+  status: string;
   remarkReason: string | null;
+  extratTme: number | null;
+  howmuchComplete: string | null;
   startAt: string;
   endAt: string;
   date?: string;
   user?: { name: string; number: string };
+}
+
+export interface TaskTableUserTask {
+  id: string;
+  name: string;
+  description: string | null;
+  rawStartTime: string;
+  rawEndTime: string;
+  startAt: string;
+  endAt: string;
+  status: string;
+  remarkReason: string | null;
+  extratTme: number | null;
+  howmuchComplete: string | null;
+  actualTime: string | null;
+  totalTime: string | null;
+  sent: boolean;
+  sendAt: string | null;
+  date: string;
+}
+
+export interface TaskTableUserGroup {
+  userId: string;
+  name: string;
+  number: string;
+  tasks: TaskTableUserTask[];
 }
 
 export interface DashboardDailyTask {
@@ -51,7 +81,8 @@ export interface DashboardDailyTask {
   userId: string;
   status: string | null;
   finaldecision: string | null;
-  notAttentReason: string | null;
+  remarkReason: string | null;
+  absentReason: string | null;
   sent: boolean;
   date: string;
   user?: { name: string; number: string };
@@ -67,10 +98,11 @@ export interface PaginationMeta {
 export type TaskStatusFilter =
   | 'all'
   | 'remark'
-  | 'ontrack'
+  | 'inprogress'
   | 'pending'
   | 'completed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'delayed';
 
 export type UserStatusFilter = 'all' | 'accept' | 'remaining' | 'decline';
 
@@ -126,10 +158,11 @@ export async function fetchTaskCards(time: TimeRange) {
 }
 
 export async function fetchTaskTable(query: TableQuery) {
-  const { data } = await apiClient.get<{ tasks: DashboardTask[]; pagination: PaginationMeta }>(
-    '/admin/dashboard/task-table',
-    { params: query },
-  );
+  const { data } = await apiClient.get<{
+    tasks: DashboardTask[];
+    groupedByUser?: TaskTableUserGroup[];
+    pagination: PaginationMeta;
+  }>('/admin/dashboard/task-table', { params: query });
   return data;
 }
 

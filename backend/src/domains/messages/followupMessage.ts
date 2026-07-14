@@ -10,8 +10,6 @@ export const userFollowUpTaskMessage = (task: {
     if (task.description?.trim()) {
         lines.push(`📝 ${task.description.trim()}`);
     }
-    lines.push("");
-    lines.push("Update status — tap a button:");
     return lines.join("\n");
 };
 
@@ -54,9 +52,9 @@ export const taskremarkresontoManager = (
     const lines: string[] = [];
     lines.push(`👋 Hi *${manager.trim()}*`);
     lines.push("");
-    lines.push("📝 *Task remark*");
+    lines.push("⚠️ *Task remark*");
     lines.push(`*${user.trim()}* (${number.trim()})`);
     lines.push(`📌 ${taskShort}`);
-    lines.push(`💬 ${reason.trim()}`);
+    lines.push(`👉 ${reason.trim()}`);
     return lines.join("\n");
 };

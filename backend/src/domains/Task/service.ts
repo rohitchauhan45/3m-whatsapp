@@ -1,26 +1,31 @@
-import { AcceptStatus, Provider, Role, TaskStaus, onTrackStatus } from "@prisma/client";
+import { AcceptStatus, DelayType, Provider, Role, TaskStaus, onTrackStatus } from "@prisma/client";
 import { prisma } from "../../libraries/db";
 import logger from "../../libraries/log/logger";
 import { excelAssignRowSchema, formatExcelRowZodError } from "./request";
 import { AppError } from "../../libraries/error-handling/AppError";
-import { convertUserTimeToMinutes, parseTimeOnDate } from "../../libraries/util/Task/timing";
+import { convertUserTimeToMinutes, parseTimeOnDate, shiftRawTimeByMinutes } from "../../libraries/util/Task/timing";
 
 import { createUserWhatsApp } from "../auth/service";
 import { groupAssignTaskSheetRows, normalizeSheetDate, readAssignTaskExcelSheetRows, } from "../../libraries/util/Task/readfromxl";
-import { sendMessageOnWhatsapp, sendWhatsAppButtons } from "../whtsapp/sendWhatsApp";
+import { sendMessageOnWhatsapp, sendWhatsAppButtons, sendWhatsappTemplate } from "../whtsapp/sendWhatsApp";
 import {
     sendAssignTaskMessage,
     sendManagerRemainingStatusMessage,
     sendManagerSummaryofAssisgnMessage,
 } from "../messages/assignTaskMessages";
-import { ensureIndiaCountryCode91 } from "../../libraries/util/Task/number";
+import { toStoredIndianWhatsAppNumber } from "../../libraries/util/Task/number";
 import { managerFollowUpSummaryMessage, taskremarkresontoManager, userFollowUpTaskMessage } from "../messages/followupMessage";
+import { startTaskEarlyMessage, taskStartNowMessage } from "../messages/startTaskMessage";
 import { reasonMessage } from "../messages/reason";
 import { normalizeChoiceforTaskfollowUp, normlizeChiocestartChoice, normlizeChoiceforDaily } from "../../libraries/util/Task/status";
 import { finalDecisionMessage } from "../../domains/messages/ontrack";
+import { morningAbsentResontoManager, morningRemarkResontoManager } from "../messages/morningOntrack";
+import { delayinprogressTaskMessagetoManager, delaystartTaskMessagetoManager } from "../messages/delayedTask";
+import e from "express";
+import { count } from "console";
 
 type choices = "inprogress" | "remark" | "done"
-type startChoice = "start" | "taskquery"
+type startChoice = "start" | "taskquery" | "delay"
 
 export type CreateTaskResult = {
     success: boolean;
@@ -65,6 +70,8 @@ const BATCH_DELAY_MS = 10_000;
 const delay = (ms: number) => { return new Promise((r) => setTimeout(r, ms)); }
 const pendingDeclineReasonByUserId = new Map<string, string>();
 const pendingFinalDecisionRemarkByUserId = new Map<string, string>();
+const pendingFinalDecisionAbsentByUserId = new Map<string, string>();
+const pendingStartTaskDelayTimeByUserId = new Map<string, string>();
 
 type FollowUpPendingStep = "howMuchComplete" | "extraTime" | "remarkReason";
 const FOLLOW_UP_PENDING_TTL_MS = 30 * 60 * 1000;
@@ -121,6 +128,7 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
     const sheet = sheetResult;
 
     const groups = groupAssignTaskSheetRows(sheet.rows);
+    const welcomedManagers = new Set<string>();
 
     for (const g of groups) {
         const taskDate = normalizeSheetDate(g.dateRaw);
@@ -150,9 +158,12 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
         }
 
         const data = parsed.data;
-        const storeUserNumber = ensureIndiaCountryCode91(data.number);
-        const storeManagerNumber = ensureIndiaCountryCode91(data.managerMobile);
-
+        const storeUserNumber = toStoredIndianWhatsAppNumber(data.number);
+        const storeManagerNumber = toStoredIndianWhatsAppNumber(data.managerMobile);
+        let isNewUser = false;
+        let isNewManager = false;
+        let count = 0
+        
         try {
             await prisma.$transaction(async (tx) => {
                 let manager = await tx.user.findFirst({
@@ -164,6 +175,7 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
                 });
 
                 if (!manager) {
+                    isNewManager = true;
                     manager = await tx.user.create({
                         data: {
                             name: data.managerName,
@@ -179,7 +191,6 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
                         deletedAt: null,
                         OR: [
                             { number: storeUserNumber },
-                            { number: data.number },
                             ...(data.email ? [{ email: data.email }] : []),
                         ],
                     },
@@ -188,12 +199,15 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
                 let userId: string;
 
                 if (existingUser) {
+                    console.log("No need to send welcome msg")
                     userId = existingUser.id;
                     await tx.user.update({
                         where: { id: existingUser.id },
                         data: { parentId: manager.id },
                     });
                 } else {
+                    isNewUser = true;
+                    count++
                     const created = await createUserWhatsApp({
                         name: data.name,
                         number: storeUserNumber,
@@ -236,6 +250,7 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
                             name: task.name,
                             userId,
                             dailyTaskId: dailyTask.id,
+                            status: TaskStaus.notSend,
                             rawStartTime: task.rawStartTime,
                             rawEndTime: task.rawEndTime,
                             startAt,
@@ -244,6 +259,37 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
                     });
                 }
             })
+
+            if (isNewManager && !welcomedManagers.has(storeManagerNumber)) {
+                welcomedManagers.add(storeManagerNumber);
+                const managerWelcomeResult = await sendWhatsappTemplate({
+                    number: storeManagerNumber,
+                    tname: "welcome_3m",
+                    parameters: [{ parameter_name: "user_name", text: data.managerName }],
+                });
+                if (managerWelcomeResult.success) {
+                    logger.info(`createTask welcome sent to new manager number=${storeManagerNumber}`);
+                } else {
+                    logger.warn(
+                        `createTask welcome failed for new manager number=${storeManagerNumber} detail=${managerWelcomeResult.message}`,
+                    );
+                }
+            }
+
+            if (isNewUser) {
+                const welcomeResult = await sendWhatsappTemplate({
+                    number: storeUserNumber,
+                    tname: "welcome_3m",
+                    parameters: [{ parameter_name: "user_name", text: data.name }],
+                });
+                if (welcomeResult.success) {
+                    logger.info(`createTask welcome sent to new user number=${storeUserNumber}`);
+                } else {
+                    logger.warn(
+                        `createTask welcome failed for new user number=${storeUserNumber} detail=${welcomeResult.message}`,
+                    );
+                }
+            }
 
             processed += 1
 
@@ -255,6 +301,7 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
     }
 
     const allOk = failedRows.length === 0;
+    console.log("new users : ", count)
     return {
         success: allOk,
         status: allOk ? 200 : processed > 0 ? 200 : 400,
@@ -324,7 +371,7 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                     continue;
                 }
 
-                const phone = child.number ? ensureIndiaCountryCode91(child.number) : "";
+                const phone = child.number?.trim() ?? "";
                 if (!phone) {
                     skippedNoPhone += 1;
                     logger.info(`assign-task skip userId=${child.id} name=${child.name}: no phone number`);
@@ -337,25 +384,79 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                     await delay(BATCH_DELAY_MS);
                 }
 
-                const body = sendAssignTaskMessage(
-                    child.name,
-                    dailyTask.tasks.map((t) => ({ name: t.name, endAt: t.endAt })),
-                );
-                const sendAt = new Date();
-
-                const result = await sendWhatsAppButtons({
-                    number: phone,
-                    message: body,
-                    buttons: [{
-                        title: "Accept",
-                        id: `accept_${dailyTask.id}`
-                    }, {
-                        title: "Decline",
-                        id: `decline_${dailyTask.id}`
-                    }]
+                const existingConversation = await prisma.whatsAppConversation.findFirst({
+                    where: { userId: child.id },
                 });
 
-                if (result.success) {
+                let result;
+                let sendAt: Date | undefined;
+
+                if (!existingConversation) {
+                    // Case 1: user never touched us before → send welcome template
+                    sendAt = new Date();
+                    result = await sendWhatsappTemplate({
+                        number: child.number,
+                        tname: "welcome_3m",
+                        parameters: [{ parameter_name: "user_name", text: child.name }],
+                    });
+                } else {
+                    const windowExpireTime = existingConversation.windowExpiresAt;
+                    const currentTime = new Date();
+                    const hasOpenWindow =
+                        windowExpireTime !== null && windowExpireTime.getTime() > currentTime.getTime();
+
+                    if (hasOpenWindow) {
+                        // Case 2: user has active 24h window → send simple interactive message (accept / decline)
+                        const body = sendAssignTaskMessage(
+                            child.name,
+                            dailyTask.tasks.map((t) => ({
+                                name: t.name,
+                                rawStartTime: t.rawStartTime,
+                                rawEndTime: t.rawEndTime,
+                            })),
+                        );
+                        sendAt = new Date();
+
+                        result = await sendWhatsAppButtons({
+                            number: phone,
+                            message: body,
+                            buttons: [
+                                {
+                                    title: "Accept",
+                                    id: `accept_${dailyTask.id}`,
+                                },
+                                {
+                                    title: "Decline",
+                                    id: `decline_${dailyTask.id}`,
+                                },
+                            ],
+                        });
+                    } else {
+                        // Case 3: user has conversation but window expired → send template with parameters & buttons
+                        const taskList = dailyTask.tasks
+                            .map(
+                                (t) =>
+                                    `${t.rawStartTime.trim()} ---> ${t.rawEndTime.trim()} : *${t.name.trim()}*`,
+                            )
+                            .join("\n");
+                        sendAt = new Date();
+                        result = await sendWhatsappTemplate({
+                            number: child.number,
+                            tname: "daily_task_assignment",
+                            // Template expects: {{user_name}} and {{task_list}}
+                            parameters: [
+                                { parameter_name: "user_name", text: child.name },
+                                { parameter_name: "task_list", text: taskList },
+                            ],
+                            buttons: [
+                                { title: "Accept", id: `accept_${dailyTask.id}` },
+                                { title: "Decline", id: `decline_${dailyTask.id}` },
+                            ],
+                        });
+                    }
+                }
+
+                if (result && result.success) {
                     sent += 1;
                     await prisma.dailyTask.update({
                         where: { id: dailyTask.id },
@@ -374,7 +475,7 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
 
             // Send summary to this manager
             const totalUsers = manager.children.length;
-            const managerPhone = manager.number ? ensureIndiaCountryCode91(manager.number) : "";
+            const managerPhone = manager.number?.trim() ?? "";
             if (managerPhone) {
                 const summaryBody = sendManagerSummaryofAssisgnMessage(
                     manager.name,
@@ -467,6 +568,50 @@ export const updateTaskAcceptFromWhatsApp = async (
     }
 }
 
+export const handleDeclineReason = async (
+    from: string,
+    reason: string,
+): Promise<boolean> => {
+    try {
+        const cleanReason = reason.trim();
+        if (!cleanReason) return false;
+
+        const user = await prisma.user.findFirst({
+            where: {
+                deletedAt: null,
+                number: from,
+            },
+        });
+        if (!user) return false;
+
+        const pendingDailyTaskId = pendingDeclineReasonByUserId.get(user.id);
+        if (!pendingDailyTaskId) return false;
+
+        const dailyTask = await prisma.dailyTask.findFirst({
+            where: {
+                id: pendingDailyTaskId,
+                userId: user.id,
+                deletedAt: null,
+                status: AcceptStatus.decline,
+                remarkReason: null,
+            },
+        });
+        if (!dailyTask) return false;
+
+        await prisma.dailyTask.update({
+            where: { id: dailyTask.id },
+            data: {
+                remarkReason: cleanReason,
+            },
+        });
+        pendingDeclineReasonByUserId.delete(user.id);
+        return true;
+    } catch (error) {
+        logger.error(`Error in save Decline reason into database : `, error)
+        throw new AppError(`Error in save Decline Reason into Database`, error.message)
+    }
+}
+
 export const sendRemaingstatusTomanager = async (): Promise<RemainingStatusResult> => {
     try {
         const managers = await prisma.user.findMany({
@@ -511,7 +656,7 @@ export const sendRemaingstatusTomanager = async (): Promise<RemainingStatusResul
                     deletedAt: null,
                     sent: true,
                     status: AcceptStatus.decline,
-                    notAttentReason: { not: null },
+                    remarkReason: { not: null },
                     userId: { in: childIds },
                 },
                 include: {
@@ -543,7 +688,7 @@ export const sendRemaingstatusTomanager = async (): Promise<RemainingStatusResul
             const declined = declinedDailyTasks
                 .map((dt) => {
                     const child = childById.get(dt.userId);
-                    const reason = dt.notAttentReason?.trim();
+                    const reason = dt.remarkReason?.trim();
                     if (!child || !reason) return null;
                     return {
                         name: child.name,
@@ -557,7 +702,7 @@ export const sendRemaingstatusTomanager = async (): Promise<RemainingStatusResul
                         m !== null,
                 );
 
-            const managerPhone = manager.number ? ensureIndiaCountryCode91(manager.number) : "";
+            const managerPhone = manager.number?.trim() ?? "";
             if (!managerPhone) {
                 skippedNoPhone += 1;
                 continue;
@@ -630,6 +775,7 @@ export const finalDecisionDailyTask = async (): Promise<FinalDecisionResult> => 
             const buttons = [
                 { id: `ontrack_${dailyTask.id}`, title: "on track" },
                 { id: `no_${dailyTask.id}`, title: "remark" },
+                { id: `absent${dailyTask.id}`, title: "Absent" }
             ];
 
             const result = await sendWhatsAppButtons({ number: phone, message: body, buttons });
@@ -713,6 +859,22 @@ export const updateFinalDecision = async (id: string, from: string, choice: "ont
             const msg = reasonMessage("remark", user.name);
             await sendMessageOnWhatsapp({ number: user.number, message: msg });
         }
+
+        if (updateDailyTask.finaldecision === onTrackStatus.absent) {
+            await prisma.task.updateMany({
+                where: { dailyTaskId: updateDailyTask.id, userId: user.id },
+                data: { status: TaskStaus.cancelled }
+            })
+
+            pendingFinalDecisionAbsentByUserId.set(user.id, updateDailyTask.id);
+            if (pendingFinalDecisionAbsentByUserId.size > 1000) {
+                const first = pendingFinalDecisionAbsentByUserId.keys().next().value
+                if (first) pendingFinalDecisionAbsentByUserId.delete(first)
+            }
+
+            const msg = reasonMessage("absent", user.name);
+            await sendMessageOnWhatsapp({ number: user.number, message: msg });
+        }
     } catch (error) {
         logger.error(`Error in Handle/update finalDecision for daily Task : `, error);
         throw new AppError(`Error in Handle/update on tracking morning status `, error.message);
@@ -741,16 +903,50 @@ export const handleFinalDecisionRemarkReason = async (
                 userId: user.id,
                 deletedAt: null,
                 finaldecision: onTrackStatus.remark,
-                notAttentReason: null,
+                remarkReason: null,
             },
         });
         if (!dailyTask) return false;
 
         await prisma.dailyTask.update({
             where: { id: dailyTask.id },
-            data: { notAttentReason: cleanReason },
+            data: { remarkReason: cleanReason },
         });
+
         pendingFinalDecisionRemarkByUserId.delete(user.id);
+
+        if (user.parentId) {
+            const [manager, tasks] = await Promise.all([
+                prisma.user.findFirst({
+                    where: { id: user.parentId, role: Role.manager, deletedAt: null },
+                }),
+                prisma.task.findMany({
+                    where: { dailyTaskId: dailyTask.id, deletedAt: null },
+                    select: { name: true },
+                }),
+            ]);
+
+            const managerPhone = manager?.number?.trim() ?? "";
+            if (manager && managerPhone) {
+                const msg = morningRemarkResontoManager(
+                    manager.name,
+                    user.name,
+                    from,
+                    tasks.map((t) => t.name) as [],
+                    cleanReason,
+                );
+                const mgrResult = await sendMessageOnWhatsapp({
+                    number: managerPhone,
+                    message: msg,
+                });
+                if (!mgrResult.success) {
+                    logger.warn(
+                        `final decision remark to manager failed manager=${manager.number} detail=${mgrResult.message}`,
+                    );
+                }
+            }
+        }
+
         return true;
     } catch (error) {
         logger.error("Error in save final decision remark reason", error);
@@ -758,23 +954,17 @@ export const handleFinalDecisionRemarkReason = async (
     }
 };
 
-export const handleDeclineReason = async (
-    from: string,
-    reason: string,
-): Promise<boolean> => {
+export const handleFinalDecisionAbsentReason = async (from: string, reason: string): Promise<boolean> => {
     try {
         const cleanReason = reason.trim();
         if (!cleanReason) return false;
 
         const user = await prisma.user.findFirst({
-            where: {
-                deletedAt: null,
-                number: from,
-            },
+            where: { deletedAt: null, number: from },
         });
         if (!user) return false;
 
-        const pendingDailyTaskId = pendingDeclineReasonByUserId.get(user.id);
+        const pendingDailyTaskId = pendingFinalDecisionAbsentByUserId.get(user.id);
         if (!pendingDailyTaskId) return false;
 
         const dailyTask = await prisma.dailyTask.findFirst({
@@ -782,33 +972,68 @@ export const handleDeclineReason = async (
                 id: pendingDailyTaskId,
                 userId: user.id,
                 deletedAt: null,
-                status: AcceptStatus.decline,
-                notAttentReason: null,
+                finaldecision: onTrackStatus.absent,
+                absentReason: null,
             },
         });
         if (!dailyTask) return false;
 
         await prisma.dailyTask.update({
             where: { id: dailyTask.id },
-            data: {
-                notAttentReason: cleanReason,
-            },
+            data: { absentReason: cleanReason },
         });
-        pendingDeclineReasonByUserId.delete(user.id);
+
+        pendingFinalDecisionAbsentByUserId.delete(user.id);
+
+        if (user.parentId) {
+            const [manager, tasks] = await Promise.all([
+                prisma.user.findFirst({
+                    where: { id: user.parentId, role: Role.manager, deletedAt: null },
+                }),
+                prisma.task.findMany({
+                    where: { dailyTaskId: dailyTask.id, deletedAt: null },
+                    select: { name: true },
+                }),
+            ]);
+
+            const managerPhone = manager?.number?.trim() ?? "";
+            if (manager && managerPhone) {
+                const msg = morningAbsentResontoManager(
+                    manager.name,
+                    user.name,
+                    from,
+                    tasks.map((t) => t.name) as [],
+                    cleanReason,
+                );
+                const mgrResult = await sendMessageOnWhatsapp({
+                    number: managerPhone,
+                    message: msg,
+                });
+                if (!mgrResult.success) {
+                    logger.warn(
+                        `final decision absent to manager failed manager=${manager.number} detail=${mgrResult.message}`,
+                    );
+                }
+            }
+        }
+
         return true;
     } catch (error) {
-        logger.error(`Error in save Decline reason into database : `, error)
-        throw new AppError(`Error in save Decline Reason into Database`, error.message)
+        logger.error("Error in save final decision Absent reason", error);
+        return false;
     }
 }
 
-export const sendStartTask = async (taskIds: string[]): Promise<TaskResult> => {
+export const sendStartTask = async (
+    taskIds: string[],
+    mode: "early" | "onTime" | "simple",
+): Promise<TaskResult> => {
     try {
         if (taskIds.length === 0) {
             return {
                 success: true,
                 status: 200,
-                message: "start task: no tasks due this minute.",
+                message: `start task (${mode}): no tasks due this minute.`,
                 sent: 0,
                 skippedNoPhone: 0,
                 skippedNoTasks: 0,
@@ -824,6 +1049,7 @@ export const sendStartTask = async (taskIds: string[]): Promise<TaskResult> => {
                 name: true,
                 description: true,
                 rawStartTime: true,
+                rawEndTime: true,
                 user: {
                     select: {
                         id: true,
@@ -846,86 +1072,127 @@ export const sendStartTask = async (taskIds: string[]): Promise<TaskResult> => {
         >();
 
         for (const task of tasks) {
-            const phone = task.user.number ? ensureIndiaCountryCode91(task.user.number) : "";
+            const phone = task.user.number?.trim() ?? "";
             if (!phone) {
                 skippedNoPhone += 1;
                 continue;
             }
 
-            const result = await sendWhatsAppButtons({
-                number: phone,
-                message: userFollowUpTaskMessage({
-                    name: task.name,
-                    description: task.description,
-                    rawStartTime: task.rawStartTime,
-                }),
-                buttons: [
-                    { title: "On Track", id: `start_${task.id}` },
-                    { title: "Remark", id: `taskquery_${task.id}` },
-                ],
-            });
+            let result
+
+            switch (mode) {
+                case "early":
+                    result = await sendWhatsAppButtons({
+                        number: phone,
+                        message: startTaskEarlyMessage({
+                            name: task.name,
+                            description: task.description,
+                            rawStartTime: task.rawStartTime,
+                            rawEndTime: task.rawEndTime,
+                        }),
+                        buttons: [
+                            { title: "On Track", id: `start_${task.id}` },
+                            { title: "Remark", id: `taskquery_${task.id}` },
+                        ],
+                    })
+                    break
+                case "onTime":
+                    result = await sendMessageOnWhatsapp({
+                        number: phone,
+                        message: taskStartNowMessage({
+                            name: task.name,
+                            rawEndTime: task.rawEndTime,
+                        }),
+                    });
+                    break
+
+                case "simple":
+                    result = await sendWhatsAppButtons({
+                        number: phone,
+                        message: startTaskEarlyMessage({
+                            name: task.name,
+                            description: task.description,
+                            rawStartTime: task.rawStartTime,
+                            rawEndTime: task.rawEndTime,
+                        }),
+                        buttons: [
+                            { title: "in Progress", id: `start_${task.id}` },
+                            { title: "Delay", id: `delay_${task.id}` },
+                            { title: "block", id: `taskquery_${task.id}` }
+                        ],
+                    })
+                    break
+            }
 
             if (result.success) {
                 sent += 1;
-                await prisma.task.update({
-                    where: { id: task.id },
-                    data: { sent: true, sendAt },
-                });
-                logger.info(`start-task sent user =${task.user.number}`);
 
-                const mgr = task.user.parent;
-                if (mgr) {
-                    const stat = managerStats.get(mgr.id) ?? {
-                        manager: mgr,
-                        sent: 0,
-                        userIds: new Set<string>(),
-                    };
-                    stat.sent += 1;
-                    stat.userIds.add(task.user.id);
-                    managerStats.set(mgr.id, stat);
+                if (mode === "onTime") {
+                    await prisma.task.update({
+                        where: { id: task.id },
+                        data: { sent: true, sendAt },
+                    });
+                }
+
+                logger.info(`start-task (${mode}) sent user =${task.user.number}`);
+
+                if (mode === "early") {
+                    const mgr = task.user.parent;
+                    if (mgr) {
+                        const stat = managerStats.get(mgr.id) ?? {
+                            manager: mgr,
+                            sent: 0,
+                            userIds: new Set<string>(),
+                        };
+                        stat.sent += 1;
+                        stat.userIds.add(task.user.id);
+                        managerStats.set(mgr.id, stat);
+                    }
                 }
             } else {
                 failedSends += 1;
                 logger.warn(
-                    `start-task failed to user number=${task.user.number} detail=${result.message}`,
+                    `start-task (${mode}) failed to user number=${task.user.number} detail=${result.message}`,
                 );
             }
         }
 
         let managerSummarySent = false;
-        for (const { manager, sent: mgrSent, userIds } of managerStats.values()) {
-            if (mgrSent === 0) continue;
+        if (mode === "early") {
+            for (const { manager, sent: mgrSent, userIds } of managerStats.values()) {
+                if (mgrSent === 0) continue;
 
-            const managerPhone = manager.number ? ensureIndiaCountryCode91(manager.number) : "";
-            if (!managerPhone) continue;
+                const managerPhone = manager.number?.trim() ?? "";
+                if (!managerPhone) continue;
 
-            const summaryBody = managerFollowUpSummaryMessage(
-                manager.name,
-                mgrSent,
-                mgrSent,
-                userIds.size,
-                0,
-                0,
-                failedSends,
-            );
-            const mgrResult = await sendMessageOnWhatsapp({
-                number: managerPhone,
-                message: summaryBody,
-            });
-            if (mgrResult.success) {
-                managerSummarySent = true;
-                logger.info(`start-task manager summary sent managerId=${manager.number}`);
-            } else {
-                logger.warn(
-                    `start-task manager summary failed manager number=${manager.number} detail=${mgrResult.message}`,
+                const summaryBody = managerFollowUpSummaryMessage(
+                    manager.name,
+                    mgrSent,
+                    mgrSent,
+                    userIds.size,
+                    0,
+                    0,
+                    failedSends,
                 );
+                const mgrResult = await sendMessageOnWhatsapp({
+                    number: managerPhone,
+                    message: summaryBody,
+                });
+                if (mgrResult.success) {
+                    managerSummarySent = true;
+                    logger.info(`start-task early manager summary sent managerId=${manager.number}`);
+                } else {
+                    logger.warn(
+                        `start-task early manager summary failed manager number=${manager.number} detail=${mgrResult.message}`,
+                    );
+                }
             }
         }
 
         return {
             success: failedSends === 0 || sent > 0,
             status: sent === 0 && taskIds.length > 0 ? 502 : 200,
-            message: `start-task: ${sent} sent, ${skippedNoPhone} without phone, ${failedSends} failed (${taskIds.length} due task(s)). Manager summary: ${managerSummarySent ? "sent" : "not sent"}.`,
+            message: `start-task (${mode}): ${sent} sent, ${skippedNoPhone} without phone, ${failedSends} failed (${taskIds.length} due task(s)). Manager summary: ${managerSummarySent ? "sent" : "not sent"}.`,
             sent,
             skippedNoPhone,
             skippedNoTasks: 0,
@@ -966,10 +1233,10 @@ export const handleStarttaskStatus = async (taskId: string, whatsappFrom: string
 
         const choice = normlizeChiocestartChoice(ch)
 
-        if (choice === TaskStaus.onTrack) {
+        if (choice === TaskStaus.inProgress) {
             await prisma.task.update({
                 where: { id: taskId },
-                data: { status: TaskStaus.onTrack },
+                data: { status: TaskStaus.inProgress },
             });
             await sendMessageOnWhatsapp({
                 number: user.number,
@@ -992,9 +1259,169 @@ export const handleStarttaskStatus = async (taskId: string, whatsappFrom: string
             return;
         }
 
+        if (choice === TaskStaus.pending) {
+            await prisma.task.update({
+                where: { id: taskId },
+                data: { status: TaskStaus.pending },
+            });
+
+            pendingStartTaskDelayTimeByUserId.set(user.id, taskId)
+            if (pendingStartTaskDelayTimeByUserId.size > 1000) {
+                const first = pendingStartTaskDelayTimeByUserId.keys().next().value
+                if (first) pendingStartTaskDelayTimeByUserId.delete(first)
+            }
+
+            await sendMessageOnWhatsapp({ number: user.number, message: "after much time you start the task ?" })
+        }
+
     } catch (error) {
         logger.error("Error in handle start task status", error)
         throw new AppError("Internal server Error while handle the start task Status", error.message)
+    }
+}
+
+export const handleStartTaskDelayTime = async (from: string, time: string) => {
+    try {
+        const user = await prisma.user.findFirst({ where: { number: from } })
+
+        if (!user) return false
+
+        const taskId = pendingStartTaskDelayTimeByUserId.get(user.id)
+        if (!taskId) return false
+
+        const resultTime = convertUserTimeToMinutes(time);
+        if (!resultTime || resultTime <= 0) {
+            await sendMessageOnWhatsapp({
+                number: from,
+                message: "Invalid time. Please send again (e.g. 1hour, 30min, 1kalak).",
+            });
+            return true;
+        }
+
+        const extraTimeMs = resultTime * 60_000;
+
+        const currentTask = await prisma.task.findFirst({
+            where: { id: taskId, deletedAt: null },
+            select: {
+                name: true,
+                rawStartTime: true,
+                startAt: true,
+                endAt: true,
+                rawEndTime: true,
+                dailyTaskId: true,
+                dailyTask: { select: { date: true } },
+                user: {
+                    select: {
+                        name: true,
+                        parent: { select: { id: true, name: true, number: true } },
+                    },
+                },
+            },
+        });
+
+        if (!currentTask) {
+            await sendMessageOnWhatsapp({ number: from, message: "Task not found." });
+            pendingStartTaskDelayTimeByUserId.delete(user.id);
+            return true;
+        }
+
+        const oldRawStarttime = currentTask.rawStartTime
+        const oldRawEndTime = currentTask.rawEndTime;
+
+        const taskDate = currentTask.dailyTask.date;
+        const newRawEndTime = shiftRawTimeByMinutes(taskDate, currentTask.rawEndTime, resultTime);
+        const newRawStartTime = shiftRawTimeByMinutes(taskDate, currentTask.rawStartTime, resultTime)
+
+        if (!newRawEndTime) {
+            await sendMessageOnWhatsapp({ number: from, message: "Could not update task time. Please try again." });
+            return true;
+        }
+
+        const nextTasks = await prisma.task.findMany({
+            where: {
+                dailyTaskId: currentTask.dailyTaskId,
+                deletedAt: null,
+                startAt: { gt: currentTask.startAt },
+            },
+            orderBy: { startAt: "asc" },
+            select: {
+                id: true,
+                startAt: true,
+                endAt: true,
+                rawStartTime: true,
+                rawEndTime: true,
+            },
+        });
+
+        const newEnd = new Date(currentTask.endAt.getTime() + extraTimeMs);
+        const newStart = new Date(currentTask.startAt.getTime() + extraTimeMs)
+
+        await prisma.$transaction(async (tx) => {
+            await tx.task.update({
+                where: { id: taskId },
+                data: {
+                    startAt: newStart,
+                    extratTme: resultTime,
+                    rawStartTime: newRawStartTime,
+                    endAt: newEnd,
+                    rawEndTime: newRawEndTime,
+                    delayType: DelayType.notStartedOnTime
+                },
+            });
+
+            for (const task of nextTasks) {
+                const shiftedRawStart = shiftRawTimeByMinutes(taskDate, task.rawStartTime, resultTime);
+                const shiftedRawEnd = shiftRawTimeByMinutes(taskDate, task.rawEndTime, resultTime);
+                if (!shiftedRawStart || !shiftedRawEnd) {
+                    throw new Error(`Invalid raw time for task ${task.id}`);
+                }
+
+                await tx.task.update({
+                    where: { id: task.id },
+                    data: {
+                        startAt: new Date(task.startAt.getTime() + extraTimeMs),
+                        endAt: new Date(task.endAt.getTime() + extraTimeMs),
+                        rawStartTime: shiftedRawStart,
+                        rawEndTime: shiftedRawEnd,
+                    },
+                });
+            }
+        });
+
+        await sendMessageOnWhatsapp({ number: user.number, message: "please start the task ASAP" })
+
+        const manager = currentTask.user.parent;
+        const managerPhone = manager?.number?.trim() ?? "";
+        if (manager && managerPhone) {
+            const msg = delaystartTaskMessagetoManager(
+                manager.name,
+                currentTask.user.name,
+                from,
+                {
+                    name: currentTask.name,
+                    oldStartTime: oldRawStarttime,
+                    newStartTime: currentTask.rawStartTime,
+                    oldEndTime: oldRawEndTime,
+                    newEndTime: newRawEndTime,
+                    extraMinutes: resultTime,
+                },
+            );
+            const mgrResult = await sendMessageOnWhatsapp({
+                number: managerPhone,
+                message: msg,
+            });
+            if (!mgrResult.success) {
+                logger.warn(
+                    `start task extra time delay to manager failed manager=${manager.number} detail=${mgrResult.message}`,
+                );
+            }
+        }
+
+        pendingStartTaskDelayTimeByUserId.delete(user.id);
+        return true;
+    } catch (error) {
+        logger.error("Error in handle start task delay time", error)
+        throw new AppError("Internal server Error while handle the start task delay time", error.message)
     }
 }
 
@@ -1042,7 +1469,7 @@ export const sendTaskFollowUp = async (taskIds: string[]): Promise<TaskResult> =
         >();
 
         for (const task of tasks) {
-            const phone = task.user.number ? ensureIndiaCountryCode91(task.user.number) : "";
+            const phone = task.user.number?.trim() ?? "";
             if (!phone) {
                 skippedNoPhone += 1;
                 continue;
@@ -1089,7 +1516,7 @@ export const sendTaskFollowUp = async (taskIds: string[]): Promise<TaskResult> =
         for (const { manager, sent: mgrSent, userIds } of managerStats.values()) {
             if (mgrSent === 0) continue;
 
-            const managerPhone = manager.number ? ensureIndiaCountryCode91(manager.number) : "";
+            const managerPhone = manager.number?.trim() ?? "";
             if (!managerPhone) continue;
 
             const summaryBody = managerFollowUpSummaryMessage(
@@ -1260,7 +1687,7 @@ export const handleFollowUpReply = async (whatsappFrom: string, text: string): P
                 const manager = await prisma.user.findFirst({
                     where: { id: user.parentId, role: Role.manager, deletedAt: null },
                 });
-                const managerPhone = manager?.number ? ensureIndiaCountryCode91(manager.number) : "";
+                const managerPhone = manager?.number?.trim() ?? "";
                 if (manager && managerPhone) {
                     const msg = taskremarkresontoManager(
                         manager.name,
@@ -1319,11 +1746,33 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
 
         const currentTask = await prisma.task.findFirst({
             where: { id, deletedAt: null },
-            select: { startAt: true, endAt: true, dailyTaskId: true },
+            select: {
+                name: true,
+                rawStartTime: true,
+                startAt: true,
+                endAt: true,
+                rawEndTime: true,
+                dailyTaskId: true,
+                dailyTask: { select: { date: true } },
+                user: {
+                    select: {
+                        name: true,
+                        parent: { select: { id: true, name: true, number: true } },
+                    },
+                },
+            },
         });
 
         if (!currentTask) {
             await sendMessageOnWhatsapp({ number: from, message: "Task not found." });
+            return false;
+        }
+
+        const oldRawEndTime = currentTask.rawEndTime;
+        const taskDate = currentTask.dailyTask.date;
+        const newRawEndTime = shiftRawTimeByMinutes(taskDate, currentTask.rawEndTime, resultTime);
+        if (!newRawEndTime) {
+            await sendMessageOnWhatsapp({ number: from, message: "Could not update task time. Please try again." });
             return false;
         }
 
@@ -1334,6 +1783,13 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
                 startAt: { gt: currentTask.startAt },
             },
             orderBy: { startAt: "asc" },
+            select: {
+                id: true,
+                startAt: true,
+                endAt: true,
+                rawStartTime: true,
+                rawEndTime: true,
+            },
         });
 
         const newEnd = new Date(currentTask.endAt.getTime() + extraTimeMs);
@@ -1344,15 +1800,25 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
                 data: {
                     extratTme: resultTime,
                     endAt: newEnd,
+                    rawEndTime: newRawEndTime,
+                    delayType: DelayType.exceededExpectedTime
                 },
             });
 
             for (const task of nextTasks) {
+                const shiftedRawStart = shiftRawTimeByMinutes(taskDate, task.rawStartTime, resultTime);
+                const shiftedRawEnd = shiftRawTimeByMinutes(taskDate, task.rawEndTime, resultTime);
+                if (!shiftedRawStart || !shiftedRawEnd) {
+                    throw new Error(`Invalid raw time for task ${task.id}`);
+                }
+
                 await tx.task.update({
                     where: { id: task.id },
                     data: {
                         startAt: new Date(task.startAt.getTime() + extraTimeMs),
                         endAt: new Date(task.endAt.getTime() + extraTimeMs),
+                        rawStartTime: shiftedRawStart,
+                        rawEndTime: shiftedRawEnd,
                     },
                 });
             }
@@ -1362,6 +1828,33 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
             number: from,
             message: "Thank you! Extra time saved.",
         });
+
+        const manager = currentTask.user.parent;
+        const managerPhone = manager?.number?.trim() ?? "";
+        if (manager && managerPhone) {
+            const msg = delayinprogressTaskMessagetoManager(
+                manager.name,
+                currentTask.user.name,
+                from,
+                {
+                    name: currentTask.name,
+                    startTime: currentTask.rawStartTime,
+                    oldEndTime: oldRawEndTime,
+                    newEndTime: newRawEndTime,
+                    extraMinutes: resultTime,
+                },
+            );
+            const mgrResult = await sendMessageOnWhatsapp({
+                number: managerPhone,
+                message: msg,
+            });
+            if (!mgrResult.success) {
+                logger.warn(
+                    `extra time delay to manager failed manager=${manager.number} detail=${mgrResult.message}`,
+                );
+            }
+        }
+
         return true;
     } catch (error) {
         logger.error("Error in handle Extra time in task", error);

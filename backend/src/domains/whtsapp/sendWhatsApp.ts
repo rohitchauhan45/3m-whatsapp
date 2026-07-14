@@ -1,5 +1,6 @@
 import axios, { isAxiosError } from "axios";
 import dotenv from "dotenv";
+import { template } from "lodash";
 
 dotenv.config();
 
@@ -20,8 +21,8 @@ interface whatsappButton {
 }
 
 interface whatsappmessagePayload {
-    number:string,
-    message:string
+    number: string,
+    message: string
 }
 
 interface SendWhatsAppButtonPayload {
@@ -29,6 +30,18 @@ interface SendWhatsAppButtonPayload {
     message: string,
     buttons: whatsappButton[]
 };
+
+interface WhatsAppTemplateBodyParameter {
+    parameter_name: string;
+    text: string;
+}
+
+interface whatsappTemplatepayload {
+    tname: string,
+    number: string,
+    parameters?: WhatsAppTemplateBodyParameter[]
+    buttons?: whatsappButton[]
+}
 
 function axiosErrorPayload(error: unknown): string {
     if (isAxiosError(error)) {
@@ -103,10 +116,6 @@ export const sendMessageOnWhatsapp = async (data: whatsappmessagePayload) => {
     }
 };
 
-/**
- * Sends a plain-text body with Accept / Decline reply buttons (WhatsApp Cloud API `interactive.type: "button"`).
- */
-
 export const sendWhatsAppButtons = async (data: SendWhatsAppButtonPayload) => {
 
     const { number, message, buttons } = data;
@@ -164,7 +173,7 @@ export const sendWhatsAppButtons = async (data: SendWhatsAppButtonPayload) => {
                     Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
                     "Content-Type": "application/json",
                 },
-                validateStatus:()=>true
+                validateStatus: () => true
             }
         );
 
@@ -192,3 +201,114 @@ export const sendWhatsAppButtons = async (data: SendWhatsAppButtonPayload) => {
         };
     }
 };
+
+export const sendWhatsappTemplate = async (data: whatsappTemplatepayload) => {
+    const { number, tname, parameters = [], buttons } = data;
+
+    const to = normalizeWhatsAppNumber(number);
+    if (!to) {
+        return { success: false, status: 400, message: "Invalid or empty phone number" };
+    }
+
+    if (!WHATSAPP_ACCESS_TOKEN || !WHATSAPP_PHONE_ID) {
+        return {
+            success: false,
+            status: 500,
+            message: "Missing WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_ID in environment",
+        };
+    }
+
+    const url = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${WHATSAPP_PHONE_ID}/messages`;
+
+    try {
+        const response = await axios.post<{
+            messages?: { id: string }[]
+        }>(
+            url,
+            {
+                messaging_product: "whatsapp",
+                to,
+                type: "template",
+                template: (() => {
+                    type BodyComponent = {
+                        type: "body";
+                        parameters: {
+                            type: "text";
+                            parameter_name: string;
+                            text: string;
+                        }[];
+                    };
+                    
+                    type QuickReplyButtonComponent = {
+                        type: "button";
+                        sub_type: "quick_reply";
+                        index: string;
+                        parameters: { type: "payload"; payload: string }[];
+                    };
+
+                    const components: Array<BodyComponent | QuickReplyButtonComponent> = [];
+
+                    if (parameters.length > 0) {
+                        components.push({
+                            type: "body",
+                            parameters: parameters.map((param) => ({
+                                type: "text",
+                                parameter_name: param.parameter_name,
+                                text: param.text,
+                            })),
+                        });
+                    }
+
+                    if (buttons && buttons.length > 0) {
+                        buttons.slice(0, 3).forEach((btn, idx) => {
+                            components.push({
+                                type: "button",
+                                sub_type: "quick_reply",
+                                index: String(idx),
+                                parameters: [{ type: "payload", payload: btn.id }],
+                            });
+                        });
+                    }
+
+                    return {
+                        name: tname,
+                        language: { code: "en" },
+                        ...(components.length > 0 ? { components } : {}),
+                    };
+                })()
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+                    "Content-Type": "application/json"
+                },
+                validateStatus: () => true
+            }
+        )
+
+        if (response.status >= 200 && response.status <= 300) {
+            const id = response.data.messages?.[0]?.id
+
+            if (id) return { success: true, status: 200, message: id }
+            return {
+                success: false,
+                status: response.status,
+                message: JSON.stringify(response.data)
+            }
+        }
+
+        return {
+            success: false,
+            status: response.status,
+            message: JSON.stringify(response.data),
+        };
+    }
+    catch (error: unknown) {
+        console.error("whatsapp template send failed", axiosErrorPayload(error))
+        return {
+            success: false,
+            status: 500,
+            message: axiosErrorPayload(error)
+        }
+    }
+}

@@ -1,19 +1,20 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   CheckCircle2,
   ClipboardList,
+  Clock,
   Eye,
   Loader2,
   MessageSquare,
   Search,
-  Target,
   Users,
   UserCheck,
   UserX,
   CalendarCheck,
+  Activity,
 } from 'lucide-react';
 import { usePageHeader } from '@/lib/utils/page-header-context';
 import Modal, { ModalDetailRow } from '@/components/ui/Modal';
@@ -23,6 +24,9 @@ import {
   type TimeRange,
   type TaskStatusFilter,
   type UserStatusFilter,
+  type TaskTableUserGroup,
+  type TaskTableUserTask,
+  type DashboardDailyTask,
   fetchTaskCards,
   fetchTaskTable,
   fetchUserCards,
@@ -41,8 +45,69 @@ type TaskDetailModalData = {
   taskName: string;
   userName: string;
   userNumber: string;
+  description?: string | null;
+  date?: string;
+  rawStartTime?: string;
+  rawEndTime?: string;
+  startAt?: string;
+  endAt?: string;
+  status?: string | null;
+  sent?: boolean;
+  sendAt?: string | null;
+  howmuchComplete?: string | null;
+  extratTme?: number | null;
+  actualTime?: string | null;
+  totalTime?: string | null;
+  remarkReason?: string | null;
   reason: string;
 };
+
+function formatTaskStatusLabel(status: string | null | undefined): string {
+  if (!status || status === 'notSend') return 'not send';
+  if (status === 'onTrack') return 'in progress';
+  if (status === 'inProgress') return 'in progress';
+  return status;
+}
+
+function formatModalDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+function buildAllTaskDetailModal(
+  group: TaskTableUserGroup,
+  task: TaskTableUserTask,
+): TaskDetailModalData {
+  return {
+    taskName: task.name,
+    userName: group.name,
+    userNumber: group.number,
+    description: task.description,
+    date: task.date,
+    rawStartTime: task.rawStartTime,
+    rawEndTime: task.rawEndTime,
+    startAt: task.startAt,
+    endAt: task.endAt,
+    status: task.status,
+    sent: task.sent,
+    sendAt: task.sendAt,
+    howmuchComplete: task.howmuchComplete,
+    extratTme: task.extratTme,
+    actualTime: task.actualTime,
+    totalTime: task.totalTime,
+    remarkReason: task.remarkReason,
+    reason: task.remarkReason || '—',
+  };
+}
 
 function truncateText(text: string) {
   if (text.length <= TRUNCATE_LENGTH) return text;
@@ -61,6 +126,26 @@ function shouldShowRowEye(data: TaskDetailModalData) {
   return [data.taskName, data.userName, data.userNumber, data.reason].some(
     (v) => v !== '—' && v.length > TRUNCATE_LENGTH,
   );
+}
+
+function buildFilterTaskDetailModal(
+  group: TaskTableUserGroup,
+  task: TaskTableUserTask,
+): TaskDetailModalData {
+  return {
+    taskName: task.name,
+    userName: group.name,
+    userNumber: group.number,
+    reason: task.remarkReason || '—',
+  };
+}
+
+function formatUserStatusLabel(status: string | null, sent?: boolean): string {
+  const displayStatus = status || 'remaining';
+  if (displayStatus === 'remaining' && sent !== undefined) {
+    return 'remaining';
+  }
+  return displayStatus;
 }
 
 function StatCard({
@@ -124,11 +209,21 @@ function TableFilters({
   );
 }
 
+function formatExtraTime(mins: number | null | undefined): string {
+  if (mins == null || mins <= 0) return '—';
+  if (mins < 60) return `${mins} min`;
+  const hours = Math.floor(mins / 60);
+  const minutes = mins % 60;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
 const TASK_STATUS_FILTER_OPTIONS: { value: TaskStatusFilter; label: string }[] = [
   { value: 'remark', label: 'Remark' },
+  { value: 'delayed', label: 'Delayed' },
   { value: 'cancelled', label: 'Cancelled' },
   { value: 'pending', label: 'Pending' },
-  { value: 'ontrack', label: 'Ontrack' },
+  { value: 'inprogress', label: 'In Progress' },
   { value: 'completed', label: 'Complete' },
   { value: 'all', label: 'All' },
 ];
@@ -213,36 +308,47 @@ function DataTableShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function TaskStatusBadge({ status }: { status: string | null }) {
+function TaskStatusBadge({
+  status,
+  large = false,
+}: {
+  status: string | null;
+  large?: boolean;
+}) {
   const s = status || 'pending';
+  const textSize = large ? 'text-sm' : 'text-xs';
 
   const config: Record<string, { label: string; className: string }> = {
     completed: { label: 'completed', className: 'text-green-600' },
-    inProgress: { label: 'inProgress', className: 'text-blue-600' },
+    inProgress: { label: 'in progress', className: 'text-blue-600' },
     remark: { label: 'remark', className: 'text-red-400' },
     cancelled: { label: 'cancelled', className: 'text-red-600' },
+    notSend: { label: 'not send', className: 'text-red-600' },
     pending: { label: 'not send', className: 'text-red-600' },
-    onTrack: { label: 'onTrack', className: 'text-blue-600' },
+    onTrack: { label: 'in progress', className: 'text-blue-600' },
   };
 
   const { label, className } = config[s] || config.pending;
 
-  return <span className={`text-xs font-semibold capitalize ${className}`}>{label}</span>;
+  return <span className={`${textSize} font-semibold capitalize ${className}`}>{label}</span>;
 }
 
 function UserStatusBadge({
   status,
   sent,
+  large = false,
 }: {
   status: string | null;
   sent?: boolean | null;
+  large?: boolean;
 }) {
   const displayStatus = status || 'remaining';
+  const textSize = large ? 'text-sm' : 'text-xs';
 
   if (displayStatus === 'remaining' && sent !== undefined) {
     return (
       <span
-        className={`text-xs font-semibold capitalize ${
+        className={`${textSize} font-semibold capitalize ${
           sent ? 'text-red-600' : 'text-gray-500'
         }`}
       >
@@ -262,7 +368,7 @@ function UserStatusBadge({
     className: 'text-gray-600',
   };
 
-  return <span className={`text-xs font-semibold capitalize ${className}`}>{label}</span>;
+  return <span className={`${textSize} font-semibold capitalize ${className}`}>{label}</span>;
 }
 
 function PaginationBar({
@@ -320,24 +426,39 @@ export default function AdminDashboard() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [taskDetailModal, setTaskDetailModal] = useState<TaskDetailModalData | null>(null);
+  const [userDetailModal, setUserDetailModal] = useState<DashboardDailyTask | null>(null);
   const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatusFilter>('remark');
   const [userStatusFilter, setUserStatusFilter] = useState<UserStatusFilter>('remaining');
   const prevTabRef = useRef(tab);
+  const pendingUserTaskSearchRef = useRef<string | null>(null);
 
-  const openTaskDetailModal = (data: TaskDetailModalData) => setTaskDetailModal(data);
+  const goToUserTasks = (userName: string, userNumber: string) => {
+    const term = userName.trim() || userNumber.trim();
+    pendingUserTaskSearchRef.current = term;
+    setTaskTimeRange(userTimeRange);
+    setTaskStatusFilter('all');
+    setDashboardTab('task');
+  };
 
   useEffect(() => {
     setShowDashboardTabs(true);
     return () => {
       setShowDashboardTabs(false);
-      setDashboardTab('task');
+      setDashboardTab('user');
     };
   }, [setShowDashboardTabs, setDashboardTab]);
 
   useEffect(() => {
     if (prevTabRef.current !== tab) {
-      setSearch('');
-      setSearchInput('');
+      const pending = pendingUserTaskSearchRef.current;
+      if (pending !== null) {
+        setSearchInput(pending);
+        setSearch(pending);
+        pendingUserTaskSearchRef.current = null;
+      } else {
+        setSearch('');
+        setSearchInput('');
+      }
       prevTabRef.current = tab;
     }
   }, [tab]);
@@ -413,24 +534,49 @@ export default function AdminDashboard() {
   const showUserDateCol = showsDateColumn(userTimeRange);
   const isAllFilter = taskStatusFilter === 'all';
   const isRemarkFilter = taskStatusFilter === 'remark';
-  const isOnTrackFilter = taskStatusFilter === 'ontrack';
+  const isDelayedFilter = taskStatusFilter === 'delayed';
   const isPendingFilter = taskStatusFilter === 'pending';
   const isCompletedFilter = taskStatusFilter === 'completed';
   const isCancelledFilter = taskStatusFilter === 'cancelled';
-  const showTaskStatusCol = isAllFilter || isPendingFilter;
-  const showTaskReasonCol = isAllFilter || isRemarkFilter || isCancelledFilter;
-  const showCompletedAtCol = isCompletedFilter;
+  const showTaskStatusCol = !isAllFilter && isPendingFilter;
+  const showTaskReasonCol = !isAllFilter && (isRemarkFilter || isCancelledFilter);
+  const showExtraTimeCol = !isAllFilter && isDelayedFilter;
+  const showHowMuchCompleteCol = !isAllFilter && isDelayedFilter;
+  const showCompletedAtCol = !isAllFilter && isCompletedFilter;
+  const showTaskDateColInTable = !isAllFilter && showTaskDateCol;
   const taskReasonWidth = isRemarkFilter ? '34%' : '24%';
+
+  const taskGroupedColSpan =
+    5 +
+    (showTaskDateColInTable ? 1 : 0) +
+    (showTaskStatusCol ? 1 : 0) +
+    (showExtraTimeCol ? 1 : 0) +
+    (showHowMuchCompleteCol ? 1 : 0) +
+    (showTaskReasonCol ? 1 : 0) +
+    (showCompletedAtCol ? 1 : 0);
 
   const isUserAllFilter = userStatusFilter === 'all';
   const isUserAcceptFilter = userStatusFilter === 'accept';
   const isUserDeclineFilter = userStatusFilter === 'decline';
   const isUserRemainingFilter = userStatusFilter === 'remaining';
   const showUserStatusCol = isUserAllFilter || isUserRemainingFilter;
-  const showUserOnTrackCol = isUserAllFilter || isUserAcceptFilter;
-  const showUserReasonCol = isUserAllFilter || isUserDeclineFilter;
+  const showUserOnTrackCol = isUserAcceptFilter;
+  const showUserReasonCol = isUserDeclineFilter;
   const showUserSentCol = isUserAllFilter || isUserAcceptFilter || isUserRemainingFilter;
+  const showUserDateColInTable = showUserDateCol && !isUserAllFilter;
   const userReasonWidth = isUserDeclineFilter ? '34%' : '22%';
+
+  const userAllFilterColSpan = 6;
+  const userTableColSpan =
+    2 +
+    (showUserDateColInTable ? 1 : 0) +
+    (showUserStatusCol ? 1 : 0) +
+    (showUserOnTrackCol ? 1 : 0) +
+    (showUserReasonCol ? 1 : 0) +
+    (showUserSentCol ? 1 : 0) +
+    (isUserAllFilter ? 2 : 0);
+
+  const groupedUsers = taskTableQuery.data?.groupedByUser ?? [];
 
   return (
     <div className="animate-fade-in min-h-[calc(100dvh-11rem)] flex flex-col w-full">
@@ -439,19 +585,7 @@ export default function AdminDashboard() {
           {tab === 'task' && (
             <div className="space-y-12 flex flex-col flex-1 min-h-0">
               {taskCardsQuery.data && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <StatCard
-                    title="On Track"
-                    value={taskCardsQuery.data.ontrack}
-                    icon={Target}
-                    iconColor="text-blue-600"
-                  />
-                  <StatCard
-                    title="Completed"
-                    value={taskCardsQuery.data.complete}
-                    icon={CheckCircle2}
-                    iconColor="text-green-600"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
                   <StatCard
                     title="Remark"
                     value={taskCardsQuery.data.remarkTask}
@@ -459,7 +593,31 @@ export default function AdminDashboard() {
                     iconColor="text-amber-600"
                   />
                   <StatCard
-                    title="Total Tasks"
+                    title="Delayed"
+                    value={taskCardsQuery.data.delayedTask}
+                    icon={Clock}
+                    iconColor="text-orange-600"
+                  />
+                  <StatCard
+                    title="Cancelled"
+                    value={taskCardsQuery.data.cancelledTask}
+                    icon={UserX}
+                    iconColor="text-red-600"
+                  />
+                  <StatCard
+                    title="In Progress"
+                    value={taskCardsQuery.data.inProgress}
+                    icon={Activity}
+                    iconColor="text-blue-600"
+                  />
+                  <StatCard
+                    title="Complete"
+                    value={taskCardsQuery.data.complete}
+                    icon={CheckCircle2}
+                    iconColor="text-green-600"
+                  />
+                  <StatCard
+                    title="All"
                     value={taskCardsQuery.data.totalTask}
                     icon={ClipboardList}
                     iconColor="text-purple-600"
@@ -486,104 +644,147 @@ export default function AdminDashboard() {
                 ) : (
                   <>
                     <DataTableShell>
-                      <table className="w-full text-sm table-fixed">
+                      <table className="w-full text-base table-fixed">
                         <colgroup>
-                          <col style={{ width: '22%' }} />
-                          <col style={{ width: '14%' }} />
-                          {showTaskDateCol && <col style={{ width: '8%' }} />}
-                          <col style={{ width: '8%' }} />
-                          <col style={{ width: '8%' }} />
+                          <col style={{ width: isAllFilter ? '20%' : '18%' }} />
+                          <col
+                            style={{
+                              width: isAllFilter ? '38%' : isRemarkFilter ? '22%' : '28%',
+                            }}
+                          />
+                          {showTaskDateColInTable && <col style={{ width: '8%' }} />}
+                          <col style={{ width: isAllFilter ? '14%' : '9%' }} />
+                          <col style={{ width: isAllFilter ? '14%' : '9%' }} />
                           {showTaskStatusCol && <col style={{ width: '10%' }} />}
+                          {showExtraTimeCol && <col style={{ width: '10%' }} />}
+                          {showHowMuchCompleteCol && <col style={{ width: '12%' }} />}
                           {showTaskReasonCol && <col style={{ width: taskReasonWidth }} />}
-                          {showCompletedAtCol && <col style={{ width: '16%' }} />}
-                          <col style={{ width: '4%' }} />
+                          {showCompletedAtCol && <col style={{ width: '12%' }} />}
+                          <col style={{ width: isAllFilter ? '6%' : '5%' }} />
                         </colgroup>
                         <thead>
-                          <tr className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-                            <th className="px-4 py-3">Task</th>
+                          <tr className="bg-gray-50 text-left text-sm uppercase tracking-wide text-gray-500">
                             <th className="px-4 py-3">User</th>
-                            {showTaskDateCol && (
-                              <th className="px-4 py-3">Date</th>
-                            )}
+                            <th className="px-4 py-3">Task</th>
+                            {showTaskDateColInTable && <th className="px-4 py-3">Date</th>}
                             <th className="px-4 py-3">Start</th>
                             <th className="px-4 py-3">End</th>
                             {showTaskStatusCol && <th className="px-4 py-3">Status</th>}
-                            {showTaskReasonCol && (
-                              <th className="px-4 py-3">Reason</th>
+                            {showExtraTimeCol && <th className="px-4 py-3">Extra Time</th>}
+                            {showHowMuchCompleteCol && (
+                              <th className="px-4 py-3">How Much Complete</th>
                             )}
+                            {showTaskReasonCol && <th className="px-4 py-3">Reason</th>}
                             {showCompletedAtCol && <th className="px-4 py-3">Completed At</th>}
                             <th className="px-2 py-3" aria-label="View details" />
                           </tr>
                         </thead>
                         <tbody>
-                          {taskTableQuery.data?.tasks.map((task) => {
-                            const detailData: TaskDetailModalData = {
-                              taskName: task.name,
-                              userName: task.user?.name || '—',
-                              userNumber: task.user?.number || '—',
-                              reason: task.remarkReason || '—',
-                            };
-                            const openDetail = () => openTaskDetailModal(detailData);
-                            const showEye = shouldShowRowEye(detailData);
+                          {groupedUsers.map((group, groupIndex) => (
+                            <Fragment key={group.userId}>
+                              {group.tasks.map((task, taskIndex) => {
+                                const detailData = isAllFilter
+                                  ? buildAllTaskDetailModal(group, task)
+                                  : buildFilterTaskDetailModal(group, task);
+                                const showEye = isAllFilter
+                                  ? true
+                                  : !isPendingFilter && shouldShowRowEye(detailData);
 
-                            return (
-                            <tr key={task.id} className="border-t border-gray-100 hover:bg-gray-50/50">
-                              <td className="px-4 py-3 font-medium text-gray-900">
-                                <TruncatedText text={task.name} />
-                              </td>
-                              <td className="px-4 py-3 text-gray-600">
-                                <TruncatedText text={task.user?.name} />
-                                <div className="text-xs text-gray-400 mt-0.5">
-                                  <TruncatedText text={task.user?.number} />
-                                </div>
-                              </td>
-                              {showTaskDateCol && (
-                                <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                                  {task.date ? formatShortDisplayDate(task.date) : '—'}
-                                </td>
-                              )}
-                              <td className="px-4 py-3 text-gray-700">{task.rawStartTime}</td>
-                              <td className="px-4 py-3 text-gray-700">{task.rawEndTime}</td>
-                              {showTaskStatusCol && (
-                                <td className="px-4 py-3">
-                                  <TaskStatusBadge status={isPendingFilter ? null : task.status} />
-                                </td>
-                              )}
-                              {showTaskReasonCol && (
-                                <td className="px-4 py-3 text-gray-600">
-                                  {isCancelledFilter ? (
-                                    <TruncatedText text="user decline, for more info see in user tab" />
-                                  ) : (
-                                    <TruncatedText text={task.remarkReason} />
-                                  )}
-                                </td>
-                              )}
-                              {showCompletedAtCol && <td className="px-4 py-3 text-gray-400">—</td>}
-                              <td className="px-2 py-3 text-center align-middle">
-                                {showEye && (
-                                  <button
-                                    type="button"
-                                    onClick={openDetail}
-                                    className="text-brand-primary hover:text-brand-primaryDark transition-colors"
-                                    aria-label="View full details"
+                                return (
+                                  <tr
+                                    key={task.id}
+                                    className={`border-t border-gray-100 hover:bg-gray-50/50 ${
+                                      taskIndex === group.tasks.length - 1
+                                        ? 'border-b-[6px] border-b-gray-100'
+                                        : ''
+                                    }`}
                                   >
-                                    <Eye size={16} />
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                          })}
-                          {!taskTableQuery.data?.tasks.length && (
+                                    {taskIndex === 0 && (
+                                      <td
+                                        rowSpan={group.tasks.length}
+                                        className="px-4 py-3 align-top border-r border-gray-100 bg-gray-50/40"
+                                      >
+                                        <div className="font-medium text-gray-900">
+                                          <TruncatedText text={group.name} />
+                                        </div>
+                                        <div className="text-sm text-gray-500 mt-1">
+                                          <TruncatedText text={group.number} />
+                                        </div>
+                                      </td>
+                                    )}
+                                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                      <TruncatedText text={task.name} />
+                                    </td>
+                                    {showTaskDateColInTable && (
+                                      <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                                        {task.date ? formatShortDisplayDate(task.date) : '—'}
+                                      </td>
+                                    )}
+                                    <td className="px-4 py-3 text-gray-700">{task.rawStartTime}</td>
+                                    <td className="px-4 py-3 text-gray-700">{task.rawEndTime}</td>
+                                    {showTaskStatusCol && (
+                                      <td className="px-4 py-3">
+                                        <TaskStatusBadge
+                                          status={task.status}
+                                          large
+                                        />
+                                      </td>
+                                    )}
+                                    {showExtraTimeCol && (
+                                      <td className="px-4 py-3 text-gray-700">
+                                        {formatExtraTime(task.extratTme)}
+                                      </td>
+                                    )}
+                                    {showHowMuchCompleteCol && (
+                                      <td className="px-4 py-3 text-gray-700">
+                                        <TruncatedText text={task.howmuchComplete} />
+                                      </td>
+                                    )}
+                                    {showTaskReasonCol && (
+                                      <td className="px-4 py-3 text-gray-600">
+                                        {isCancelledFilter ? (
+                                          <TruncatedText text="user decline, for more info see in user tab" />
+                                        ) : (
+                                          <TruncatedText text={task.remarkReason} />
+                                        )}
+                                      </td>
+                                    )}
+                                    {showCompletedAtCol && (
+                                      <td className="px-4 py-3 text-gray-400">—</td>
+                                    )}
+                                    <td className="px-2 py-3 text-center align-middle">
+                                      {showEye && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setTaskDetailModal(detailData)}
+                                          className="text-brand-primary hover:text-brand-primaryDark transition-colors"
+                                          aria-label={
+                                            isAllFilter
+                                              ? 'View full task details'
+                                              : 'View full details'
+                                          }
+                                        >
+                                          <Eye size={18} />
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                              {groupIndex < groupedUsers.length - 1 && (
+                                <tr aria-hidden="true">
+                                  <td
+                                    colSpan={taskGroupedColSpan}
+                                    className="h-4 p-0 bg-gray-50/80 border-0"
+                                  />
+                                </tr>
+                              )}
+                            </Fragment>
+                          ))}
+                          {!groupedUsers.length && (
                             <tr>
                               <td
-                                colSpan={
-                                  (showTaskDateCol ? 6 : 5) +
-                                  (showTaskStatusCol ? 1 : 0) +
-                                  (showTaskReasonCol ? 1 : 0) +
-                                  (showCompletedAtCol ? 1 : 0) +
-                                  1
-                                }
+                                colSpan={taskGroupedColSpan}
                                 className={`${EMPTY_ROW_HEIGHT} align-middle text-center text-gray-400`}
                               >
                                 No tasks for this period
@@ -660,27 +861,44 @@ export default function AdminDashboard() {
                 ) : (
                   <>
                     <DataTableShell>
-                      <table className="w-full text-sm table-fixed">
+                      <table className="w-full text-base table-fixed">
                         <colgroup>
-                          <col style={{ width: '18%' }} />
-                          <col style={{ width: '14%' }} />
-                          {showUserDateCol && <col style={{ width: '8%' }} />}
-                          {showUserStatusCol && <col style={{ width: '12%' }} />}
-                          {showUserOnTrackCol && <col style={{ width: '12%' }} />}
-                          {showUserReasonCol && <col style={{ width: userReasonWidth }} />}
-                          {showUserSentCol && <col style={{ width: '8%' }} />}
+                          {isUserAllFilter ? (
+                            <>
+                              <col style={{ width: '22%' }} />
+                              <col style={{ width: '18%' }} />
+                              <col style={{ width: '14%' }} />
+                              <col style={{ width: '12%' }} />
+                              <col style={{ width: '10%' }} />
+                              <col style={{ width: '6%' }} />
+                            </>
+                          ) : (
+                            <>
+                              <col style={{ width: '18%' }} />
+                              <col style={{ width: '14%' }} />
+                              {showUserDateColInTable && <col style={{ width: '8%' }} />}
+                              {showUserStatusCol && <col style={{ width: '12%' }} />}
+                              {showUserOnTrackCol && <col style={{ width: '12%' }} />}
+                              {showUserReasonCol && <col style={{ width: userReasonWidth }} />}
+                              {showUserSentCol && <col style={{ width: '8%' }} />}
+                            </>
+                          )}
                         </colgroup>
                         <thead>
-                          <tr className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                          <tr className="bg-gray-50 text-left text-sm uppercase tracking-wide text-gray-500">
                             <th className="px-4 py-3">User</th>
                             <th className="px-4 py-3">Number</th>
-                            {showUserDateCol && (
+                            {showUserDateColInTable && (
                               <th className="px-4 py-3">Date</th>
                             )}
                             {showUserStatusCol && <th className="px-4 py-3">Status</th>}
                             {showUserOnTrackCol && <th className="px-4 py-3">On Track</th>}
                             {showUserReasonCol && <th className="px-4 py-3">Reason</th>}
                             {showUserSentCol && <th className="px-4 py-3">Sent</th>}
+                            {isUserAllFilter && <th className="px-4 py-3">Task</th>}
+                            {isUserAllFilter && (
+                              <th className="px-2 py-3" aria-label="View details" />
+                            )}
                           </tr>
                         </thead>
                         <tbody>
@@ -695,7 +913,7 @@ export default function AdminDashboard() {
                                 {dt.user?.name || '—'}
                               </td>
                               <td className="px-4 py-3 text-gray-600">{dt.user?.number || '—'}</td>
-                              {showUserDateCol && (
+                              {showUserDateColInTable && (
                                 <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
                                   {dt.date ? formatShortDisplayDate(dt.date) : '—'}
                                 </td>
@@ -705,6 +923,7 @@ export default function AdminDashboard() {
                                   <UserStatusBadge
                                     status={dt.status}
                                     sent={useRemainingSentColors ? dt.sent : undefined}
+                                    large
                                   />
                                 </td>
                               )}
@@ -713,18 +932,43 @@ export default function AdminDashboard() {
                               )}
                               {showUserReasonCol && (
                                 <td className="px-4 py-3 text-gray-600">
-                                  <TruncatedText text={dt.notAttentReason} />
+                                  <TruncatedText text={dt.remarkReason} />
                                 </td>
                               )}
                               {showUserSentCol && (
                                 <td className="px-4 py-3">
                                   {dt.sent ? (
-                                    <span className="text-green-600 text-xs font-semibold">Yes</span>
+                                    <span className="text-sm font-semibold text-green-600">Yes</span>
                                   ) : (
-                                    <span className="text-red-600 text-xs font-semibold capitalize">
+                                    <span className="text-sm font-semibold capitalize text-red-600">
                                       not send
                                     </span>
                                   )}
+                                </td>
+                              )}
+                              {isUserAllFilter && (
+                                <td className="px-4 py-3">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      goToUserTasks(dt.user?.name || '', dt.user?.number || '')
+                                    }
+                                    className="text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+                                  >
+                                    Task
+                                  </button>
+                                </td>
+                              )}
+                              {isUserAllFilter && (
+                                <td className="px-2 py-3 text-center align-middle">
+                                  <button
+                                    type="button"
+                                    onClick={() => setUserDetailModal(dt)}
+                                    className="text-brand-primary hover:text-brand-primaryDark transition-colors"
+                                    aria-label="View full user details"
+                                  >
+                                    <Eye size={18} />
+                                  </button>
                                 </td>
                               )}
                             </tr>
@@ -733,14 +977,7 @@ export default function AdminDashboard() {
                           {!userTableQuery.data?.dailyTasks.length && (
                             <tr>
                               <td
-                                colSpan={
-                                  2 +
-                                  (showUserDateCol ? 1 : 0) +
-                                  (showUserStatusCol ? 1 : 0) +
-                                  (showUserOnTrackCol ? 1 : 0) +
-                                  (showUserReasonCol ? 1 : 0) +
-                                  (showUserSentCol ? 1 : 0)
-                                }
+                                colSpan={isUserAllFilter ? userAllFilterColSpan : userTableColSpan}
                                 className={`${EMPTY_ROW_HEIGHT} align-middle text-center text-gray-400`}
                               >
                                 No users for this period
@@ -766,13 +1003,55 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* TIME TAB */}
-          {tab === 'time' && (
+          {/* SETTING TAB */}
+          {tab === 'setting' && (
             <div className="w-full max-w-5xl mx-auto">
               <ScheduleSettings />
             </div>
           )}
       </div>
+
+      <Modal
+        open={!!userDetailModal}
+        onClose={() => setUserDetailModal(null)}
+        title="User Details"
+        size="lg"
+      >
+        {userDetailModal && (
+          <>
+            <ModalDetailRow label="User Name" value={userDetailModal.user?.name || '—'} />
+            <ModalDetailRow label="Number" value={userDetailModal.user?.number || '—'} />
+            <ModalDetailRow
+              label="Date"
+              value={
+                userDetailModal.date ? formatShortDisplayDate(userDetailModal.date) : '—'
+              }
+            />
+            <ModalDetailRow
+              label="Status"
+              value={formatUserStatusLabel(
+                userDetailModal.status,
+                !userDetailModal.status || userDetailModal.status === 'remaining'
+                  ? userDetailModal.sent
+                  : undefined,
+              )}
+            />
+            <ModalDetailRow label="On Track" value={userDetailModal.finaldecision || '—'} />
+            <ModalDetailRow
+              label="Decline Reason"
+              value={userDetailModal.remarkReason || '—'}
+            />
+            <ModalDetailRow
+              label="Absent Reason"
+              value={userDetailModal.absentReason || '—'}
+            />
+            <ModalDetailRow
+              label="Sent"
+              value={userDetailModal.sent ? 'Yes' : 'not send'}
+            />
+          </>
+        )}
+      </Modal>
 
       <Modal
         open={!!taskDetailModal}
@@ -785,7 +1064,75 @@ export default function AdminDashboard() {
             <ModalDetailRow label="Task Name" value={taskDetailModal.taskName} />
             <ModalDetailRow label="User Name" value={taskDetailModal.userName} />
             <ModalDetailRow label="User Number" value={taskDetailModal.userNumber} />
-            <ModalDetailRow label="Reason" value={taskDetailModal.reason} />
+            {taskDetailModal.date !== undefined && (
+              <ModalDetailRow
+                label="Date"
+                value={
+                  taskDetailModal.date ? formatShortDisplayDate(taskDetailModal.date) : '—'
+                }
+              />
+            )}
+            {taskDetailModal.description !== undefined && (
+              <ModalDetailRow label="Description" value={taskDetailModal.description || '—'} />
+            )}
+            {taskDetailModal.rawStartTime !== undefined && (
+              <ModalDetailRow label="Start Time" value={taskDetailModal.rawStartTime || '—'} />
+            )}
+            {taskDetailModal.rawEndTime !== undefined && (
+              <ModalDetailRow label="End Time" value={taskDetailModal.rawEndTime || '—'} />
+            )}
+            {taskDetailModal.startAt !== undefined && (
+              <ModalDetailRow
+                label="Scheduled Start"
+                value={formatModalDateTime(taskDetailModal.startAt)}
+              />
+            )}
+            {taskDetailModal.endAt !== undefined && (
+              <ModalDetailRow
+                label="Scheduled End"
+                value={formatModalDateTime(taskDetailModal.endAt)}
+              />
+            )}
+            {taskDetailModal.status !== undefined && (
+              <ModalDetailRow
+                label="Status"
+                value={formatTaskStatusLabel(taskDetailModal.status)}
+              />
+            )}
+            {taskDetailModal.sent !== undefined && (
+              <ModalDetailRow
+                label="Sent"
+                value={taskDetailModal.sent ? 'Yes' : 'not send'}
+              />
+            )}
+            {taskDetailModal.sendAt !== undefined && (
+              <ModalDetailRow
+                label="Sent At"
+                value={formatModalDateTime(taskDetailModal.sendAt)}
+              />
+            )}
+            {taskDetailModal.howmuchComplete !== undefined && (
+              <ModalDetailRow
+                label="How Much Complete"
+                value={taskDetailModal.howmuchComplete || '—'}
+              />
+            )}
+            {taskDetailModal.extratTme !== undefined && (
+              <ModalDetailRow
+                label="Extra Time"
+                value={formatExtraTime(taskDetailModal.extratTme)}
+              />
+            )}
+            {taskDetailModal.actualTime !== undefined && (
+              <ModalDetailRow label="Actual Time" value={taskDetailModal.actualTime || '—'} />
+            )}
+            {taskDetailModal.totalTime !== undefined && (
+              <ModalDetailRow label="Total Time" value={taskDetailModal.totalTime || '—'} />
+            )}
+            <ModalDetailRow
+              label="Remark Reason"
+              value={taskDetailModal.remarkReason ?? taskDetailModal.reason}
+            />
           </>
         )}
       </Modal>

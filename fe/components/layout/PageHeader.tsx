@@ -5,9 +5,9 @@ import { ArrowLeft } from 'lucide-react';
 import { usePageHeader, type DashboardTab } from '@/lib/utils/page-header-context';
 
 const DASHBOARD_TABS: { id: DashboardTab; label: string }[] = [
-  { id: 'task', label: 'Task' },
   { id: 'user', label: 'User' },
-  { id: 'time', label: 'Time' },
+  { id: 'task', label: 'Task' },
+  { id: 'setting', label: 'Setting' },
 ];
 
 export default function PageHeader() {

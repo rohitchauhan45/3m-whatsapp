@@ -8,6 +8,7 @@ import {
     usertable,
     type timeRange,
     type UserStatusFilter,
+    type TaskTableStatusFilter,
 } from "./service";
 import { TaskStaus } from "@prisma/client";
 
@@ -29,18 +30,19 @@ function parseTimeRange(raw: unknown): timeRange {
     return value;
 }
 
-function parseTaskStatusFilter(raw: unknown): TaskStaus | "all" | "pending" | undefined {
+function parseTaskStatusFilter(raw: unknown): TaskTableStatusFilter | undefined {
     if (typeof raw !== "string" || !raw.trim()) return undefined;
     const value = raw.trim().toLowerCase();
     if (value === "all") return "all";
     if (value === "remark") return TaskStaus.remark;
     if (value === "completed" || value === "complete") return TaskStaus.completed;
     if (value === "cancelled") return TaskStaus.cancelled;
-    if (value === "ontrack" || value === "inprogress") return TaskStaus.inProgress;
+    if (value === "delayed") return "delayed";
+    if (value === "ontrack" || value === "inprogress") return "inprogress";
     if (value === "pending") return "pending";
     throw new AppError(
         "Validation error",
-        "Invalid status. Use: all, remark, ontrack, pending, completed, cancelled",
+        "Invalid status. Use: all, remark, inprogress, pending, completed, cancelled, delayed",
         400
     );
 }

@@ -96,6 +96,27 @@ export const attendence = async (from: string, lat: number, long: number) => {
             return;
         }
 
+        const start = new Date()
+        start.setHours(0, 0, 0, 0)
+
+        const end = new Date()
+        end.setHours(23, 59, 59, 999)
+
+        const isalreadyAttend = await prisma.attendence.findFirst({
+            where: {
+                userId: user.id,
+                createdAt: {
+                    gte: start,
+                    lte: end
+                }
+            }
+        })
+
+        if (isalreadyAttend) {
+            await sendMessageOnWhatsapp({ number: from, message: "Already puch-in !" })
+            return
+        }
+
         const distance = calculateDistance(WORK_AREA_LAT, WORK_AREA_LONG, lat, long);
 
         const currentTime = new Date().toLocaleTimeString("en-IN", {
@@ -117,7 +138,7 @@ export const attendence = async (from: string, lat: number, long: number) => {
 
             await sendMessageOnWhatsapp({
                 number: from,
-                message: "Thank you for checking in with us.",
+                message: "Thank you for being with us.",
             });
             return;
         }

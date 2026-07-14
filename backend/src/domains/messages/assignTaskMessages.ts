@@ -1,33 +1,17 @@
-const formatDueDateTime = (d: Date): string => {
-    return d.toLocaleString("en-IN", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-    });
-};
-
 export const sendAssignTaskMessage = (
     userName: string,
-    tasks: { name: string; endAt: Date }[]
+    tasks: { name: string; rawStartTime: string; rawEndTime: string }[]
 ): string => {
     const lines: string[] = [];
     lines.push(`👋 Hi *${userName.trim()}*`);
     lines.push("");
-    lines.push("📋 *Today's tasks* — complete before due time:");
+    lines.push("📋 *Tomorrow's tasks*:");
     lines.push("");
-    tasks.forEach((t, i) => {
-        lines.push(`${i + 1}. *${t.name.trim()}*`);
-        lines.push(`   ⏰ Due: ${formatDueDateTime(t.endAt)}`);
-        lines.push("");
+    tasks.forEach((t) => {
+        lines.push(`${t.rawStartTime.trim()} ---> ${t.rawEndTime.trim()} : *${t.name.trim()}*`);
     });
-    lines.push("✅ Accept  ·  ❌ Decline — tap a button below.");
     return lines.join("\n");
 };
-
 export const sendManagerSummaryofAssisgnMessage = (
     managerName: string,
     sent: number,

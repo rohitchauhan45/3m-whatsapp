@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 
-export type DashboardTab = 'task' | 'user' | 'time';
+export type DashboardTab = 'user' | 'task' | 'setting';
 
 interface PageHeaderContextType {
   breadcrumb: string | null;
@@ -28,7 +28,7 @@ const PageHeaderContext = createContext<PageHeaderContextType | null>(null);
 export function PageHeaderProvider({ children }: { children: ReactNode }) {
   const [breadcrumb, setBreadcrumbState] = useState<string | null>(null);
   const [showDashboardTabs, setShowDashboardTabsState] = useState(false);
-  const [dashboardTab, setDashboardTabState] = useState<DashboardTab>('task');
+  const [dashboardTab, setDashboardTabState] = useState<DashboardTab>('user');
   const onBackRef = useRef<(() => void) | null>(null);
   const [onBackVersion, setOnBackVersion] = useState(0);
 

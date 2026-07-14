@@ -8,7 +8,5 @@ export const finalDecisionMessage = (userName: string, tasks: { name: string }[]
         lines.push("");
         tasks.forEach((t, i) => lines.push(`${i + 1}. 📌 ${t.name.trim()}`));
     }
-    lines.push("");
-    lines.push("Tap a button below.");
     return lines.join("\n");
 };

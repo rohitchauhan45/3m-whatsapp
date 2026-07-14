@@ -1,8 +1,10 @@
 import {
     handleDeclineReason,
+    handleFinalDecisionAbsentReason,
     handleFinalDecisionRemarkReason,
     handleFollowUp,
     handleFollowUpReply,
+    handleStartTaskDelayTime,
     handleStarttaskStatus,
     updateFinalDecision,
     updateTaskAcceptFromWhatsApp,
@@ -10,6 +12,9 @@ import {
 import logger from "../../libraries/log/logger";
 import dotenv from "dotenv";
 import { attendence } from "../attendence/service";
+import { prisma } from "../../libraries/db";
+import { sendMessageOnWhatsapp } from "../../domains/whtsapp/sendWhatsApp";
+import { touchConversation } from "../../domains/conversation/service";
 
 dotenv.config();
 
@@ -60,9 +65,21 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
     const type = typeof msg.type === "string" ? msg.type : "";
     if (!from || !type) return;
 
+    const user = await prisma.user.findFirst({
+        where: { number: from }
+    })
+
+    if (!user) {
+        await sendMessageOnWhatsapp({ number: from, message: "You are not user in this app please contact Admin or manager" })
+        return
+    }
+
     if (type === "text" && isRecord(msg.text)) {
+        await touchConversation(user.id)
+
         const textBody = typeof msg.text.body === "string" ? msg.text.body.trim() : "";
         if (!textBody) return;
+
         logger.info(`incoming msg from = ${from} message = ${textBody}`);
 
         const declineSaved = await handleDeclineReason(from, textBody);
@@ -71,12 +88,22 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
         const finalRemarkSaved = await handleFinalDecisionRemarkReason(from, textBody);
         if (finalRemarkSaved) return;
 
+        const startTaskdelay = await handleStartTaskDelayTime(from, textBody)
+        if (startTaskdelay) return
+
         const followUpSaved = await handleFollowUpReply(from, textBody);
         if (followUpSaved) return;
+
+        const finalAbsentSaved = await handleFinalDecisionAbsentReason(from, textBody)
+        if (finalAbsentSaved) return;
+
         return;
     }
 
     if (type === "location" && isRecord(msg.location)) {
+
+        await touchConversation(user.id)
+
         const latitude = parseCoordinate(msg.location.latitude);
         const longitude = parseCoordinate(msg.location.longitude);
 
@@ -108,11 +135,13 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
     const [action, id] = buttonId.split("_")
     logger.info(`webhook incoming from=${from} message=${action}`);
 
+    await touchConversation(user.id)
+
     if (action === "accept" || action === "decline") {
         await updateTaskAcceptFromWhatsApp(id, from, action);
     }
 
-    if (action === "start" || action === "taskquery") {
+    if (action === "start" || action === "taskquery" || action ==="delay") {
         await handleStarttaskStatus(id, from, action)
     }
 

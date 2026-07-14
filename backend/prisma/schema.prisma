@@ -20,13 +20,19 @@ enum Provider{
 }
 
 enum TaskStaus{
+  notSend
   pending
   inProgress
-  onTrack
   remark
   completed
   cancelled
   deleted
+}
+
+enum DelayType{
+  none
+  notStartedOnTime
+  exceededExpectedTime
 }
 
 enum AcceptStatus{
@@ -39,11 +45,16 @@ enum onTrackStatus{
   onTrack
   remark
   remaining
+  absent
 }
 
 enum AttendenceType{
   morning
   afternoon
+}
+
+enum Setting{
+  onTrackmsg
 }
 
 model User{
@@ -72,6 +83,8 @@ model User{
   tasks           Task[]
   cron            Cron[]
   attendence      Attendence[]
+  conversation    WhatsAppConversation[]
+  adminSetting    AdminSettings[]
 
   @@index([parentId])
 }
@@ -82,7 +95,8 @@ model DailyTask{
 
   status          AcceptStatus?
   finaldecision   onTrackStatus?          
-  notAttentReason String?
+  remarkReason    String?
+  absentReason    String?
 
   sent            Boolean       @default(false)
   sendAt          DateTime?
@@ -107,8 +121,9 @@ model Task {
   userId           String
   description      String?
 
-  status           TaskStaus?
+  status           TaskStaus  @default(notSend)
 
+  delayType        DelayType  @default(none)
   // remark reason
   remarkReason     String?
   howmuchComplete  String?
@@ -168,4 +183,35 @@ model Cron {
   user       User     @relation(fields:[updateById],references:[id])
 
   @@index([name])
+}
+
+model WhatsAppConversation {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+
+  lastIncomingAt  DateTime?
+  lastOutgoingAt  DateTime?
+  windowExpiresAt DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+
+  @@index([userId])
+}
+
+model AdminSettings {
+  id        String   @id @default(cuid())
+  adminId   String   
+
+  name      Setting   
+  isEnable  Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  admin     User     @relation(fields:[adminId], references:[id] , onDelete:Cascade)
+  
+  @@index([adminId])
 }

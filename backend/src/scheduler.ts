@@ -1,6 +1,6 @@
 import { CronJob } from "cron";
 import logger from "./libraries/log/logger";
-import { prisma } from "./libraries/db"; 
+import { prisma } from "./libraries/db";
 import {
     assignTask,
     finalDecisionDailyTask,
@@ -8,7 +8,7 @@ import {
     sendStartTask,
     sendTaskFollowUp,
 } from "./domains/Task/service";
-import { AcceptStatus, TaskStaus } from "@prisma/client";
+import { AcceptStatus, TaskStaus, onTrackStatus } from "@prisma/client";
 import { isTaskStartDueEarly, isTaskStartNow } from "./libraries/util/Task/timing";
 import {
     CRON_SETTING_NAMES,
@@ -26,7 +26,9 @@ let remainingStatusTimeout: NodeJS.Timeout | null = null;
 const DEFAULT_ASSIGN_TIME = "0 21 * * *";
 const DEFAULT_ONTRACK_TIME = "0 7 * * *";
 /** Every minute — follow-up sends only tasks whose startAt matches current time. */
-const FOLLOWUP_EVERY_MINUTE = "*/30 * * * *";
+const FOLLOWUP_EVERY_MINUTE = "0/10 * * * *";
+
+type tastsendType = "early" | "onTime"
 
 let remainingStatusDelayMs = DEFAULT_REMAINING_STATUS_DELAY_MIN * 60 * 1000;
 let startTaskEarlyMs = DEFAULT_START_TASK_EARLY_MIN * 60 * 1000;
@@ -78,13 +80,13 @@ export async function getDueFollowUpTaskIds(managerId?: string): Promise<string[
         where: {
             deletedAt: null,
             OR: [
-                { status: { notIn: [TaskStaus.cancelled, TaskStaus.inProgress, TaskStaus.deleted] } },
-                { status: null },
+                { status: { notIn: [TaskStaus.cancelled, TaskStaus.notSend, TaskStaus.deleted] } }
             ],
             dailyTask: {
                 deletedAt: null,
                 sent: true,
                 status: AcceptStatus.accept,
+                finaldecision: onTrackStatus.onTrack
             },
             user: {
                 deletedAt: null,
@@ -97,20 +99,21 @@ export async function getDueFollowUpTaskIds(managerId?: string): Promise<string[
     return tasks.filter((t) => isTaskStartNow(t.endAt, now)).map((t) => t.id);
 }
 
-export async function getDueStartTaskIds(managerId?: string): Promise<string[]> {
+export async function getDueStartTaskIds(type: tastsendType, managerId?: string): Promise<string[]> {
     const now = new Date();
     const tasks = await prisma.task.findMany({
         where: {
             deletedAt: null,
             sent: false,
             OR: [
-                { status: { notIn: [TaskStaus.cancelled, TaskStaus.inProgress, TaskStaus.deleted] } },
-                { status: null },
+                { status: { notIn: [TaskStaus.cancelled, TaskStaus.deleted] } },
+
             ],
             dailyTask: {
                 deletedAt: null,
                 sent: true,
                 status: AcceptStatus.accept,
+                finaldecision: onTrackStatus.onTrack
             },
             user: {
                 deletedAt: null,
@@ -119,18 +122,41 @@ export async function getDueStartTaskIds(managerId?: string): Promise<string[]> 
         },
         select: { id: true, startAt: true },
     });
+    if (type === "early") {
+        return tasks
+            .filter((t) => isTaskStartDueEarly(t.startAt, startTaskEarlyMs, now))
+            .map((t) => t.id);
 
-    return tasks
-        .filter((t) => isTaskStartDueEarly(t.startAt, startTaskEarlyMs, now))
-        .map((t) => t.id);
+    } if (type === "onTime") {
+        return tasks
+            .filter((t) => isTaskStartNow(t.startAt, now))
+            .map((t) => t.id);
+    }
+
+    return [];
 }
 
 async function runFollowUpForAll() {
     logger.info("cron Starting start/follow-up for due tasks");
     try {
-        const startTaskIds = await getDueStartTaskIds();
-        const startResult = await sendStartTask(startTaskIds);
-        logger.info(`cron start-task done: ${startResult.message}`);
+        const adminOntrackPer = await prisma.adminSettings.findFirst({ where: { name: "onTrackmsg" } });
+        const isOnTrackMsgEnabled = adminOntrackPer?.isEnable === true;
+
+        if (isOnTrackMsgEnabled) {
+            const startEarlyTaskIds = await getDueStartTaskIds("early");
+            const startEarlyResult = await sendStartTask(startEarlyTaskIds, "early");
+            logger.info(`cron start early-task done: ${startEarlyResult.message}`);
+
+            const startOnTimeTaskIds = await getDueStartTaskIds("onTime");
+            const startOnTimeResult = await sendStartTask(startOnTimeTaskIds, "onTime");
+            logger.info(`cron start on-time task done: ${startOnTimeResult.message}`);
+        }
+
+        else {
+            const startOnTimeTaskIds = await getDueStartTaskIds("onTime");
+            const startOnTimeResult = await sendStartTask(startOnTimeTaskIds, "simple");
+            logger.info(`cron start on-time with simple mode task done: ${startOnTimeResult.message}`);
+        }
 
         const followUpTaskIds = await getDueFollowUpTaskIds();
         const followUpResult = await sendTaskFollowUp(followUpTaskIds);

@@ -55,7 +55,41 @@ export const parseTimeOnDate = (baseDate: Date, raw: string): Date | null => {
     }
 
     return null;
-}
+};
+
+/** Format an IST wall-clock time like Excel uploads (`9am`, `9:30pm`). */
+export const formatISTTimeLabel = (date: Date): string => {
+    const { hour: h24, minute } = getISTTimeParts(date);
+    let hour = h24;
+    const period = hour >= 12 ? "pm" : "am";
+    if (hour > 12) hour -= 12;
+    if (hour === 0) hour = 12;
+    if (minute > 0) {
+        return `${hour}:${String(minute).padStart(2, "0")}${period}`;
+    }
+    return `${hour}${period}`;
+};
+
+/** Shift a stored raw time string by minutes; preserves 24h vs am/pm style when possible. */
+export const shiftRawTimeByMinutes = (
+    baseDate: Date,
+    raw: string,
+    minutes: number,
+): string | null => {
+    const parsed = parseTimeOnDate(baseDate, raw);
+    if (!parsed) return null;
+
+    const shifted = new Date(parsed.getTime() + minutes * 60_000);
+    const value = raw.trim().toLowerCase();
+
+    if (/^\d{1,2}:\d{2}$/.test(value)) {
+        const { hour, minute: min } = getISTTimeParts(shifted);
+        return `${hour}:${String(min).padStart(2, "0")}`;
+    }
+
+    return formatISTTimeLabel(shifted);
+};
+
 export const convertUserTimeToMinutes = (
     input: string
 ): number | null => {

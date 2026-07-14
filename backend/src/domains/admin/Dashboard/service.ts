@@ -7,7 +7,8 @@ import { convertTimeRangeintoDate } from "../../../libraries/util/Admin/timing";
 export type timeRange = "today" | "yesterday" | "thisweek" | "lastweek" | "thismonth" | "lastmonth" | "thisyear"
 
 interface PaginationResult {
-    tasks: Task[];
+    tasks: (Task & { date: Date })[];
+    groupedByUser?: TaskTableUserGroup[];
     pagination: {
         page: number;
         limit: number;
@@ -15,6 +16,32 @@ interface PaginationResult {
         totalPages: number;
     };
 }
+
+export type TaskTableUserTask = {
+    id: string;
+    name: string;
+    description: string | null;
+    rawStartTime: string;
+    rawEndTime: string;
+    startAt: Date;
+    endAt: Date;
+    status: TaskStaus;
+    remarkReason: string | null;
+    howmuchComplete: string | null;
+    actualTime: string | null;
+    extratTme: number | null;
+    totalTime: string | null;
+    sent: boolean;
+    sendAt: Date | null;
+    date: Date;
+};
+
+export type TaskTableUserGroup = {
+    userId: string;
+    name: string;
+    number: string;
+    tasks: TaskTableUserTask[];
+};
 
 interface UserTablePaginationResult {
     dailyTasks: DailyTask[];
@@ -56,26 +83,35 @@ export const taskCardDetails = async (time: timeRange) => {
             },
         }
 
-        const [ontrack, complete, remark, totaltask] = await Promise.all([
-            prisma.task.count({ where: { ...baseWhere, status: "inProgress" } }),
-            prisma.task.count({ where: { ...baseWhere, status: "completed" } }),
-            prisma.task.count({ where: { ...baseWhere, status: "remark" } }),
+        const [inProgress, delayed, complete, remark, cancelled, totaltask] = await Promise.all([
             prisma.task.count({
                 where: {
-                    ...baseWhere, OR: [
-                        { status: null },
-                        { status: { notIn: ["deleted"] } },
-                    ]
-                }
+                    ...baseWhere,
+                    status: { in: [TaskStaus.inProgress] },
+                },
             }),
-        ])
+            prisma.task.count({
+                where: { ...baseWhere, extratTme: { not: null, gt: 0 } },
+            }),
+            prisma.task.count({ where: { ...baseWhere, status: TaskStaus.completed } }),
+            prisma.task.count({ where: { ...baseWhere, status: TaskStaus.remark } }),
+            prisma.task.count({ where: { ...baseWhere, status: TaskStaus.cancelled } }),
+            prisma.task.count({
+                where: {
+                    ...baseWhere,
+                    OR: [{ status: { notIn: [TaskStaus.deleted] } }],
+                },
+            }),
+        ]);
 
         const data = {
-            ontrack,
+            inProgress,
+            delayedTask: delayed,
             complete,
             remarkTask: remark,
-            totalTask: totaltask
-        }
+            cancelledTask: cancelled,
+            totalTask: totaltask,
+        };
 
         return {
             status: 200,
@@ -89,70 +125,121 @@ export const taskCardDetails = async (time: timeRange) => {
     }
 };
 
+export type TaskTableStatusFilter = TaskStaus | "all" | "pending" | "delayed" | "inprogress";
+
+function buildTaskTableStatusWhere(
+    statusFilter: TaskTableStatusFilter,
+): Prisma.TaskWhereInput {
+    if (statusFilter === "all") return {};
+    if (statusFilter === "pending") return { status: TaskStaus.notSend };
+    if (statusFilter === "delayed") return { extratTme: { not: null, gt: 0 } };
+    if (statusFilter === "inprogress") {
+        return { status: { in: [TaskStaus.inProgress] } };
+    }
+    return { status: statusFilter };
+}
+
+function buildTaskTableSearchWhere(searchTerm: string): Prisma.TaskWhereInput {
+    return {
+        OR: [
+            { name: { contains: searchTerm, mode: "insensitive" } },
+            { description: { contains: searchTerm, mode: "insensitive" } },
+            {
+                user: {
+                    deletedAt: null,
+                    OR: [
+                        { name: { contains: searchTerm, mode: "insensitive" } },
+                        { number: { contains: searchTerm, mode: "insensitive" } },
+                    ],
+                },
+            },
+        ],
+    };
+}
+
+async function taskTableGroupedByUser(
+    query: { page?: number; limit?: number; search?: string; status?: TaskTableStatusFilter },
+    time: timeRange,
+): Promise<PaginationResult> {
+    const page = query.page || 1;
+    const limit = query.limit || 10;
+    const skip = (page - 1) * limit;
+    const searchTerm = query.search?.trim() || "";
+    const dateFilter = convertTimeRangeintoDate(time);
+    const statusFilter = query.status ?? "remark";
+
+    const where: Prisma.TaskWhereInput = {
+        deletedAt: null,
+        dailyTask: {
+            deletedAt: null,
+            date: dateFilter,
+        },
+        ...buildTaskTableStatusWhere(statusFilter),
+        ...(searchTerm ? buildTaskTableSearchWhere(searchTerm) : {}),
+    };
+
+    const taskRows = await prisma.task.findMany({
+        where,
+        orderBy: [{ user: { name: "asc" } }, { startAt: "asc" }],
+        include: {
+            user: { select: { id: true, name: true, number: true } },
+            dailyTask: { select: { date: true } },
+        },
+    });
+
+    const groupMap = new Map<string, TaskTableUserGroup>();
+
+    for (const { dailyTask, user, ...taskRow } of taskRows) {
+        const existing = groupMap.get(taskRow.userId);
+        const taskItem: TaskTableUserTask = {
+            id: taskRow.id,
+            name: taskRow.name,
+            description: taskRow.description,
+            rawStartTime: taskRow.rawStartTime,
+            rawEndTime: taskRow.rawEndTime,
+            startAt: taskRow.startAt,
+            endAt: taskRow.endAt,
+            status: taskRow.status,
+            remarkReason: taskRow.remarkReason,
+            extratTme: taskRow.extratTme,
+            howmuchComplete: taskRow.howmuchComplete,
+            actualTime: taskRow.actualTime,
+            totalTime: taskRow.totalTime,
+            sent: taskRow.sent,
+            sendAt: taskRow.sendAt,
+            date: dailyTask.date,
+        };
+
+        if (existing) {
+            existing.tasks.push(taskItem);
+        } else {
+            groupMap.set(taskRow.userId, {
+                userId: taskRow.userId,
+                name: user.name,
+                number: user.number,
+                tasks: [taskItem],
+            });
+        }
+    }
+
+    const allGroups = Array.from(groupMap.values());
+    const total = allGroups.length;
+    const totalPages = Math.ceil(total / limit) || 1;
+    const groupedByUser = allGroups.slice(skip, skip + limit);
+
+    return {
+        tasks: [],
+        groupedByUser,
+        pagination: { page, limit, total, totalPages },
+    };
+}
+
 export const taskTable = async (
-    query: { page?: number; limit?: number; search?: string; status?: TaskStaus | "all" | "pending" } = {},
+    query: { page?: number; limit?: number; search?: string; status?: TaskTableStatusFilter } = {},
     time: timeRange,
 ): Promise<PaginationResult> => {
     try {
-        const page = query.page || 1;
-        const limit = query.limit || 10;
-        const skip = (page - 1) * limit;
-
-        const searchTerm = query.search?.trim() || "";
-        const dateFilter = convertTimeRangeintoDate(time);
-        const statusFilter = query.status ?? "remark";
-
-        const where: Prisma.TaskWhereInput = {
-            deletedAt: null,
-            dailyTask: {
-                deletedAt: null,
-                date: dateFilter,
-            },
-            ...(statusFilter === "all"
-                ? {}
-                : statusFilter === "pending"
-                  ? { status: null }
-                  : { status: statusFilter }),
-            ...(searchTerm
-                ? {
-                    OR: [
-                        { name: { contains: searchTerm, mode: "insensitive" } },
-                        { description: { contains: searchTerm, mode: "insensitive" } },
-                    ],
-                }
-                : {}),
-        };
-
-        const [taskRows, total] = await Promise.all([
-            prisma.task.findMany({
-                where,
-                skip,
-                take: limit,
-                orderBy: { createdAt: "asc" },
-                include: {
-                    user: { select: { name: true, number: true } },
-                    dailyTask: { select: { date: true } },
-                },
-            }),
-            prisma.task.count({ where }),
-        ]);
-
-        const totalPages = Math.ceil(total / limit);
-
-        const tasks = taskRows.map(({ dailyTask, ...taskRow }) => ({
-            ...taskRow,
-            date: dailyTask.date,
-        }));
-
-        return {
-            tasks: tasks as (Task & { date: Date })[],
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages,
-            },
-        };
+        return await taskTableGroupedByUser(query, time);
     } catch (error) {
         logger.error("Error in fetch task table Details !", error);
         throw new AppError("Internal server Error while fetch the Task Table Details", error.message);

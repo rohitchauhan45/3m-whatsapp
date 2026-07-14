@@ -1,4 +1,12 @@
 import { z } from "zod";
+import { digitsOnlyPhone, INDIAN_MOBILE_10_ERROR, isValidIndianMobile10 } from "../../libraries/util/Task/number";
+
+const indianMobile10Schema = z
+    .string()
+    .trim()
+    .min(1, "number is required")
+    .transform(digitsOnlyPhone)
+    .refine(isValidIndianMobile10, { message: INDIAN_MOBILE_10_ERROR });
 
 const emailFromCell = z
     .unknown()
@@ -16,10 +24,10 @@ export const excelAssignRowSchema = z.object({
         invalid_type_error: "date must be a valid date",
     }),
     name: z.string().trim().min(1, "name is required"),
-    number: z.string().trim().min(1, "number is required"),
+    number: indianMobile10Schema,
     email: emailFromCell,
     managerName: z.string().trim().min(1, "managerName is required"),
-    managerMobile: z.string().trim().min(1, "manager mobile is required"),
+    managerMobile: indianMobile10Schema,
     tasks: z
         .array(
             z.object({
