@@ -28,8 +28,8 @@ let remainingStatusTimeout: NodeJS.Timeout | null = null;
 
 const DEFAULT_ASSIGN_TIME = "0 21 * * *";
 const DEFAULT_ONTRACK_TIME = "0 7 * * *";
-/** Every minute — follow-up sends only tasks whose startAt matches current time. */
-const FOLLOWUP_EVERY_MINUTE = "* * * * *";
+/** Every minute between 8:00 AM and 9:59 PM IST (off overnight to reduce load). */
+const FOLLOWUP_CRON_SCHEDULE = "* 8-21 * * *";
 
 type tastsendType = "early" | "onTime"
 
@@ -215,10 +215,10 @@ export async function readCronjob() {
     assignJob.start();
     logger.info(`cron Assign task scheduled: ${assignTime}`);
 
-    followUpJob = new CronJob(FOLLOWUP_EVERY_MINUTE, runFollowUpForAll, null, true, "Asia/Kolkata");
+    followUpJob = new CronJob(FOLLOWUP_CRON_SCHEDULE, runFollowUpForAll, null, true, "Asia/Kolkata");
     followUpJob.start();
     logger.info(
-        `cron Follow-up scheduled every minute (start tasks send ${startTaskEarlyMs / 60_000} min before startAt)`,
+        `cron Follow-up scheduled every minute 8:00 AM --> 9:59 PM IST (${FOLLOWUP_CRON_SCHEDULE}; start tasks send ${startTaskEarlyMs / 60_000} min before startAt)`,
     );
 
     onTrackJob = new CronJob(onTrackTime, runFinalDecisionForAll, null, true, "Asia/Kolkata");
