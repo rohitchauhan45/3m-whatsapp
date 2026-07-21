@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import ConfigurableAuthLayout from '@/components/layout/ConfigurableAuthLayout';
+import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/lib/utils/auth';
 import { useToast } from '@/lib/providers/toast-provider';
 import { login as loginAPI, resendVerification, forgotPassword, verifyOtp, resetPassword } from '@/lib/services/authService';
@@ -341,173 +342,163 @@ export default function LoginPage() {
         </button>
       </form>
 
-      {/* Forgot Password Modal */}
-      {isForgotModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-2xl font-semibold text-gray-900">
-                  {forgotStep === 'request' && 'Reset password'}
-                  {forgotStep === 'verify' && 'Verify OTP'}
-                  {forgotStep === 'reset' && 'Choose new password'}
-                </h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  {forgotStep === 'request' && 'Enter your email to receive a 6-digit OTP.'}
-                  {forgotStep === 'verify' && 'Enter the OTP we sent to your email.'}
-                  {forgotStep === 'reset' && 'Create a strong password for your account.'}
-                </p>
-              </div>
+      <Modal
+        open={isForgotModalOpen}
+        onClose={() => {
+          setIsForgotModalOpen(false);
+          resetForgotPasswordState();
+        }}
+        title={
+          forgotStep === 'request'
+            ? 'Reset password'
+            : forgotStep === 'verify'
+              ? 'Verify OTP'
+              : 'Choose new password'
+        }
+        description={
+          forgotStep === 'request'
+            ? 'Enter your email to receive a 6-digit OTP.'
+            : forgotStep === 'verify'
+              ? 'Enter the OTP we sent to your email.'
+              : 'Create a strong password for your account.'
+        }
+        size="md"
+      >
+        {forgotStep === 'request' && (
+          <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-gray-700" htmlFor="forgot-email">
+                Email address
+              </label>
+              <input
+                id="forgot-email"
+                type="email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="name@example.com"
+                disabled={isSendingReset}
+              />
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 type="button"
-                className="text-gray-400 hover:text-gray-600"
+                className="w-full rounded-lg border border-gray-300 py-2.5 font-semibold text-gray-600 hover:bg-gray-50 sm:w-1/3"
                 onClick={() => {
                   setIsForgotModalOpen(false);
                   resetForgotPasswordState();
                 }}
-                aria-label="Close password reset"
               >
-                ✕
+                Close
+              </button>
+              <button
+                type="submit"
+                disabled={isSendingReset}
+                className={`w-full rounded-lg py-2.5 font-semibold text-white transition-colors sm:flex-1 ${
+                  isSendingReset ? 'cursor-not-allowed bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
+              >
+                {isSendingReset ? 'Sending...' : 'Send OTP'}
               </button>
             </div>
+          </form>
+        )}
 
-            {forgotStep === 'request' && (
-              <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1" htmlFor="forgot-email">
-                    Email address
-                  </label>
-                  <input
-                    id="forgot-email"
-                    type="email"
-                    value={forgotEmail}
-                    onChange={(e) => setForgotEmail(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="name@example.com"
-                    disabled={isSendingReset}
-                  />
-                </div>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <button
-                    type="button"
-                    className="w-full sm:w-1/3 py-2.5 rounded-lg border border-gray-300 text-gray-600 font-semibold hover:bg-gray-50"
-                    onClick={() => {
-                      setIsForgotModalOpen(false);
-                      resetForgotPasswordState();
-                    }}
-                  >
-                    Close
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSendingReset}
-                    className={`w-full sm:flex-1 py-2.5 rounded-lg font-semibold text-white transition-colors ${
-                      isSendingReset ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
-                    }`}
-                  >
-                    {isSendingReset ? 'Sending...' : 'Send OTP'}
-                  </button>
-                </div>
-              </form>
-            )}
+        {forgotStep === 'verify' && (
+          <form onSubmit={handleVerifyOtpSubmit} className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-gray-700" htmlFor="otp-input">
+                Enter OTP
+              </label>
+              <input
+                id="otp-input"
+                type="text"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="6-digit code"
+                disabled={isVerifyingOtp}
+                maxLength={6}
+              />
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                className="w-full rounded-lg border border-gray-300 py-2.5 font-semibold text-gray-600 hover:bg-gray-50 sm:w-1/3"
+                onClick={() => {
+                  setForgotStep('request');
+                  hideToast();
+                }}
+              >
+                Back
+              </button>
+              <button
+                type="submit"
+                disabled={isVerifyingOtp}
+                className={`w-full rounded-lg py-2.5 font-semibold text-white transition-colors sm:flex-1 ${
+                  isVerifyingOtp ? 'cursor-not-allowed bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
+              >
+                {isVerifyingOtp ? 'Verifying...' : 'Verify OTP'}
+              </button>
+            </div>
+          </form>
+        )}
 
-            {forgotStep === 'verify' && (
-              <form onSubmit={handleVerifyOtpSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1" htmlFor="otp-input">
-                    Enter OTP
-                  </label>
-                  <input
-                    id="otp-input"
-                    type="text"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="6-digit code"
-                    disabled={isVerifyingOtp}
-                    maxLength={6}
-                  />
-                </div>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <button
-                    type="button"
-                    className="w-full sm:w-1/3 py-2.5 rounded-lg border border-gray-300 text-gray-600 font-semibold hover:bg-gray-50"
-                    onClick={() => {
-                      setForgotStep('request');
-                      hideToast();
-                    }}
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isVerifyingOtp}
-                    className={`w-full sm:flex-1 py-2.5 rounded-lg font-semibold text-white transition-colors ${
-                      isVerifyingOtp ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
-                    }`}
-                  >
-                    {isVerifyingOtp ? 'Verifying...' : 'Verify OTP'}
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {forgotStep === 'reset' && (
-              <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1" htmlFor="new-password">
-                    New password
-                  </label>
-                  <input
-                    id="new-password"
-                    type="password"
-                    value={newPasswordValue}
-                    onChange={(e) => setNewPasswordValue(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="Enter new password"
-                    disabled={isResettingPassword}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1" htmlFor="confirm-password">
-                    Confirm password
-                  </label>
-                  <input
-                    id="confirm-password"
-                    type="password"
-                    value={confirmPasswordValue}
-                    onChange={(e) => setConfirmPasswordValue(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="Re-enter new password"
-                    disabled={isResettingPassword}
-                  />
-                </div>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <button
-                    type="button"
-                    className="w-full sm:w-1/3 py-2.5 rounded-lg border border-gray-300 text-gray-600 font-semibold hover:bg-gray-50"
-                    onClick={() => {
-                      setForgotStep('verify');
-                      hideToast();
-                    }}
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isResettingPassword}
-                    className={`w-full sm:flex-1 py-2.5 rounded-lg font-semibold text-white transition-colors ${
-                      isResettingPassword ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
-                    }`}
-                  >
-                    {isResettingPassword ? 'Saving...' : 'Reset password'}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
+        {forgotStep === 'reset' && (
+          <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-gray-700" htmlFor="new-password">
+                New password
+              </label>
+              <input
+                id="new-password"
+                type="password"
+                value={newPasswordValue}
+                onChange={(e) => setNewPasswordValue(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="Enter new password"
+                disabled={isResettingPassword}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-gray-700" htmlFor="confirm-password">
+                Confirm password
+              </label>
+              <input
+                id="confirm-password"
+                type="password"
+                value={confirmPasswordValue}
+                onChange={(e) => setConfirmPasswordValue(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="Re-enter new password"
+                disabled={isResettingPassword}
+              />
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                className="w-full rounded-lg border border-gray-300 py-2.5 font-semibold text-gray-600 hover:bg-gray-50 sm:w-1/3"
+                onClick={() => {
+                  setForgotStep('verify');
+                  hideToast();
+                }}
+              >
+                Back
+              </button>
+              <button
+                type="submit"
+                disabled={isResettingPassword}
+                className={`w-full rounded-lg py-2.5 font-semibold text-white transition-colors sm:flex-1 ${
+                  isResettingPassword ? 'cursor-not-allowed bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
+              >
+                {isResettingPassword ? 'Saving...' : 'Reset password'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </ConfigurableAuthLayout>
   );
 }

@@ -5,6 +5,7 @@ import { isValidCron } from "cron-validator";
 import { readCronjob } from "../../scheduler";
 import { isMinuteSettingName, parsePositiveMinutes } from "../../constants/cronSettings";
 import { Role } from "@prisma/client";
+import { notifyAdminError } from "../../libraries/util/notifyAdminError";
 
 interface cronjobData {
     name: string,
@@ -95,6 +96,7 @@ export const getAllTasksByDate = async () => {
         return { success: true, status: 200, message: "OK", days };
     } catch (error: any) {
         logger.error("getAllTasksByDate error", error);
+        await notifyAdminError("get all tasks by date");
         throw new AppError("Failed to get tasks", error.message, 500);
     }
 };
@@ -185,6 +187,7 @@ export const getAllManagers = async () => {
         };
     } catch (error: any) {
         logger.error("getting manager Error !", error);
+        await notifyAdminError("get all managers");
         throw new AppError("Failed to get All Managers", error.message, 500);
     }
 };
@@ -205,6 +208,7 @@ export const getAllCronjobs = async () => {
         return { success: true, status: 200, message: "Cronjobs fetched", data: Array.from(cronMap.values()) };
     } catch (error: any) {
         logger.error("getAllCronjobs error", error);
+        await notifyAdminError("get all cronjobs");
         throw new AppError("Failed to get cronjobs", error.message, 500);
     }
 };
@@ -280,6 +284,7 @@ export const updateAdminCronjob = async (id: string, data: cronjobData) => {
         };
     } catch (error: any) {
         logger.error("Error in Update Cronjob", error);
+        await notifyAdminError("update cronjob");
         throw new AppError("Error updating cronjob", error.message, 500);
     }
 };

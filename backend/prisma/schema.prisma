@@ -23,10 +23,15 @@ enum TaskStaus{
   notSend
   pending
   inProgress
+  hold
   remark
+  deleted
+}
+
+enum TaskFinalStatus{
+  blocked
   completed
   cancelled
-  deleted
 }
 
 enum DelayType{
@@ -115,15 +120,17 @@ model DailyTask{
 }
 
 model Task {
-  id               String       @id @default(cuid())
+  id               String           @id @default(cuid())
   name             String
   dailyTaskId      String
   userId           String
   description      String?
 
-  status           TaskStaus  @default(notSend)
+  position         Int
 
-  delayType        DelayType  @default(none)
+  status           TaskStaus        @default(notSend)
+  finaldecision    TaskFinalStatus?
+  delayType        DelayType        @default(none)
   // remark reason
   remarkReason     String?
   howmuchComplete  String?
@@ -134,22 +141,23 @@ model Task {
   totalTime        String?
 
   //assign details
-  sent             Boolean      @default(false)
+  sent             Boolean          @default(false)
   sendAt           DateTime?
 
   rawStartTime     String
   rawEndTime       String
   startAt          DateTime
   endAt            DateTime
+  lasthold         DateTime?
 
   //normal details for dashbboard
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
   deletedAt        DateTime?      
 
   //relation
-  user             User         @relation(fields:[userId] , references:[id] , onDelete:Cascade)
-  dailyTask        DailyTask    @relation(fields:[dailyTaskId] , references:[id] , onDelete:Cascade)
+  user             User             @relation(fields:[userId] , references:[id] , onDelete:Cascade)
+  dailyTask        DailyTask        @relation(fields:[dailyTaskId] , references:[id] , onDelete:Cascade)
 
   @@index([userId])
   @@index([dailyTaskId])
@@ -188,7 +196,8 @@ model Cron {
 model WhatsAppConversation {
   id              String   @id @default(cuid())
   userId          String   @unique
-
+  number          String   
+ 
   lastIncomingAt  DateTime?
   lastOutgoingAt  DateTime?
   windowExpiresAt DateTime?

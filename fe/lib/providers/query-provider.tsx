@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode, useState } from 'react';
 import { cachedQueryOptions } from '@/lib/query-config';
+import DashboardRealtimeProvider from '@/lib/providers/dashboard-realtime-provider';
 
 export default function QueryProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -19,7 +20,7 @@ export default function QueryProvider({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <DashboardRealtimeProvider>{children}</DashboardRealtimeProvider>
     </QueryClientProvider>
   );
 }

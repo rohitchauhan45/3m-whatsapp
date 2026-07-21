@@ -34,6 +34,27 @@ export function getISTCalendarParts(date: Date): { y: number; m: number; d: numb
     };
 }
 
+/** Stored calendar date for today in IST (UTC midnight of that Y-M-D). */
+export function getISTTodayCalendarDate(now = new Date()): Date {
+    const { y, m, d } = getISTCalendarParts(now);
+    return calendarDateFromParts(y, m, d);
+}
+
+/** Stored calendar date for tomorrow in IST. */
+export function getISTTomorrowCalendarDate(now = new Date()): Date {
+    return addCalendarDays(getISTTodayCalendarDate(now), 1);
+}
+
+/** True when `date` is a calendar day strictly after today (IST). */
+export function isFutureISTCalendarDate(date: Date, now = new Date()): boolean {
+    return date.getTime() > getISTTodayCalendarDate(now).getTime();
+}
+
+export function formatCalendarDateLabel(date: Date): string {
+    const { y, m, d } = getUTCDateParts(date);
+    return `${String(d).padStart(2, "0")}-${String(m).padStart(2, "0")}-${y}`;
+}
+
 export function getISTTimeParts(date: Date): { hour: number; minute: number; second: number } {
     const shifted = new Date(date.getTime() + IST_OFFSET_MS);
     return {

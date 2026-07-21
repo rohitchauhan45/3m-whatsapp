@@ -37,6 +37,20 @@ const MINUTE_SETTING_KEYS = [
   'default_start_task_early',
 ] as const;
 
+type SettingKey = (typeof CORE_CRON_KEYS)[number] | (typeof MINUTE_SETTING_KEYS)[number];
+
+const SETTINGS_DISPLAY_ORDER: SettingKey[] = [
+  'default_task_assign_time',
+  'default_remaining_status_delay',
+  'default_task_ontrack_time',
+  'default_task_followup_time',
+  'default_start_task_early',
+];
+
+function isMinuteSettingKey(name: string): name is (typeof MINUTE_SETTING_KEYS)[number] {
+  return (MINUTE_SETTING_KEYS as readonly string[]).includes(name);
+}
+
 const CORE_CRON_DEFAULTS: Record<(typeof CORE_CRON_KEYS)[number], string> = {
   default_task_assign_time: '0 21 * * *',
   default_task_followup_time: '0 10 * * *',
@@ -246,6 +260,14 @@ export default function ScheduleSettings() {
     mutation.mutate({ id: cj.id, name: cj.name, time: normalized });
   };
 
+  const settingsByName = new Map<string, CronJob>();
+  cronJobsToRender.forEach((cj) => settingsByName.set(cj.name, cj));
+  minuteSettingsToRender.forEach((cj) => settingsByName.set(cj.name, cj));
+
+  const orderedSettings = SETTINGS_DISPLAY_ORDER.map((key) => settingsByName.get(key)).filter(
+    (cj): cj is CronJob => Boolean(cj),
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16 text-gray-400">
@@ -262,7 +284,50 @@ export default function ScheduleSettings() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-      {cronJobsToRender.map((cj) => {
+      {orderedSettings.map((cj) => {
+        if (isMinuteSettingKey(cj.name)) {
+          const value = minuteValues[cj.id] ?? cj.time;
+          const hasChanged = value.trim() !== cj.time;
+
+          return (
+            <div key={cj.id} className="border border-gray-200 rounded-xl p-5 bg-gray-50/40">
+              <div className="mb-4">
+                <h4 className="font-semibold text-gray-900">{CRON_LABELS[cj.name] || cj.name}</h4>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {CRON_DESCRIPTIONS[cj.name] || 'Custom setting'}
+                </p>
+              </div>
+              <div className="flex items-end gap-3 flex-wrap">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] uppercase text-gray-400 font-bold">Minutes</label>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={value}
+                    onChange={(e) =>
+                      setMinuteValues((prev) => ({ ...prev, [cj.id]: e.target.value }))
+                    }
+                    className="w-28 rounded-lg border border-gray-200 px-3 py-2.5 text-base font-semibold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+                    placeholder="30"
+                  />
+                </div>
+                <button
+                  onClick={() => handleSaveMinutes(cj)}
+                  disabled={mutation.isPending || !hasChanged}
+                  className="ml-auto flex items-center gap-2 px-5 py-3 bg-brand-primary text-white rounded-xl text-sm font-medium disabled:opacity-50"
+                >
+                  <Save size={14} />
+                  Save
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-3">
+                Current: <span className="font-medium text-gray-600">{cj.time} min</span>
+              </p>
+            </div>
+          );
+        }
+
         const tp = timeParts[cj.id];
         if (!tp) return null;
         const hasChanged = timePartsToCron(tp) !== cj.time;
@@ -314,49 +379,6 @@ export default function ScheduleSettings() {
             </div>
             <p className="text-xs text-gray-400 mt-3">
               Current: <span className="font-medium text-gray-600">{cronToTimeLabel(cj.time)}</span>
-            </p>
-          </div>
-        );
-      })}
-
-      {minuteSettingsToRender.map((cj) => {
-        const value = minuteValues[cj.id] ?? cj.time;
-        const hasChanged = value.trim() !== cj.time;
-
-        return (
-          <div key={cj.id} className="border border-gray-200 rounded-xl p-5 bg-gray-50/40">
-            <div className="mb-4">
-              <h4 className="font-semibold text-gray-900">{CRON_LABELS[cj.name] || cj.name}</h4>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {CRON_DESCRIPTIONS[cj.name] || 'Custom setting'}
-              </p>
-            </div>
-            <div className="flex items-end gap-3 flex-wrap">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] uppercase text-gray-400 font-bold">Minutes</label>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={value}
-                  onChange={(e) =>
-                    setMinuteValues((prev) => ({ ...prev, [cj.id]: e.target.value }))
-                  }
-                  className="w-28 rounded-lg border border-gray-200 px-3 py-2.5 text-base font-semibold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
-                  placeholder="30"
-                />
-              </div>
-              <button
-                onClick={() => handleSaveMinutes(cj)}
-                disabled={mutation.isPending || !hasChanged}
-                className="ml-auto flex items-center gap-2 px-5 py-3 bg-brand-primary text-white rounded-xl text-sm font-medium disabled:opacity-50"
-              >
-                <Save size={14} />
-                Save
-              </button>
-            </div>
-            <p className="text-xs text-gray-400 mt-3">
-              Current: <span className="font-medium text-gray-600">{cj.time} min</span>
             </p>
           </div>
         );

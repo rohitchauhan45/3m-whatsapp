@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Edit, Trash2, X, Loader2, AlertCircle } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Loader2, AlertCircle } from 'lucide-react';
+import Modal from '@/components/ui/Modal';
 import { useAuth, isAdmin } from '@/lib/utils/auth';
 import { getAllUsers, createUser, updateUser, deleteUser, type User, type CreateUserData, type UpdateUserData } from '@/lib/services/userService';
 
@@ -500,27 +501,17 @@ const UserManagement: React.FC = () => {
         )}
       </div>
 
-      {showModal && (
-        <div className="fixed z-50 inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="glass-card rounded-3xl w-full max-w-md sm:max-w-lg md:max-w-xl mx-auto my-8 shadow-xl overflow-hidden max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4 border-b border-gray-200 pb-3">
-                <h2 className="text-xl font-semibold text-gray-900">
-                  {currentUserData ? 'Edit User' : 'Create New User'}
-                </h2>
-                <button
-                  onClick={() => {
-                    setShowModal(false);
-                    setError(null);
-                    setValidationErrors({});
-                  }}
-                  className="text-gray-400 hover:text-gray-500 transition-colors"
-                  aria-label="Close"
-                >
-                  <X size={24} />
-                </button>
-              </div>
-              <form onSubmit={handleSubmit} noValidate className="space-y-4">
+      <Modal
+        open={showModal}
+        onClose={() => {
+          setShowModal(false);
+          setError(null);
+          setValidationErrors({});
+        }}
+        title={currentUserData ? 'Edit User' : 'Create New User'}
+        size="lg"
+      >
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="username">
                     Username*
@@ -672,62 +663,51 @@ const UserManagement: React.FC = () => {
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
-      {showDeleteModal && (
-        <div className="fixed z-50 inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="glass-card rounded-3xl w-full max-w-sm mx-auto my-8 shadow-xl overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4 border-b border-gray-200 pb-3">
-                <h3 className="text-lg font-semibold text-gray-900">Confirm Delete</h3>
-                <button
-                  onClick={() => {
-                    setShowDeleteModal(false);
-                    setError(null);
-                  }}
-                  className="text-gray-400 hover:text-gray-500 transition-colors"
-                  aria-label="Close"
-                >
-                  <X size={24} />
-                </button>
-              </div>
-              <p className="mb-6 text-gray-700">
-                Are you sure you want to delete user <span className="font-medium">{currentUserData?.username}</span>?
-                This action cannot be undone.
-              </p>
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => {
-                    setShowDeleteModal(false);
-                    setError(null);
-                  }}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-pink disabled:opacity-50"
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDeleteConfirm}
-                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <span className="flex items-center">
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Deleting...
-                    </span>
-                  ) : (
-                    'Delete User'
-                  )}
-                </button>
-              </div>
-            </div>
+      <Modal
+        open={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setError(null);
+        }}
+        title="Confirm Delete"
+        size="sm"
+        footer={
+          <div className="flex justify-end space-x-3">
+            <button
+              onClick={() => {
+                setShowDeleteModal(false);
+                setError(null);
+              }}
+              className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-pink disabled:opacity-50"
+              disabled={isSubmitting}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDeleteConfirm}
+              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <span className="flex items-center">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </span>
+              ) : (
+                'Delete User'
+              )}
+            </button>
           </div>
-        </div>
-      )}
+        }
+      >
+        <p className="text-gray-700">
+          Are you sure you want to delete user{' '}
+          <span className="font-medium">{currentUserData?.username}</span>? This action cannot be
+          undone.
+        </p>
+      </Modal>
     </div>
   );
 };

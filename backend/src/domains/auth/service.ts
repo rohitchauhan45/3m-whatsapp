@@ -5,6 +5,7 @@ import logger from "../../libraries/log/logger";
 import { prisma } from "../../libraries/db";
 import { AppError } from "../../libraries/error-handling/AppError";
 import { sendEmail, sendEmailForResetPassword } from "../../libraries/util/verifyEmail";
+import { notifyAdminError } from "../../libraries/util/notifyAdminError";
 
 const model = "user";
 
@@ -89,6 +90,7 @@ const login = async (data: LoginInput): Promise<AuthResponse> => {
       throw error;
     }
     logger.error(`login(): Failed to login ${model}`, error);
+    await notifyAdminError("login");
     throw new AppError(`Failed to login`, error.message, 500);
   }
 };
@@ -156,6 +158,7 @@ const signup = async (data: SignupInput): Promise<AuthResponse> => {
       throw error;
     }
     logger.error(`signup(): Failed to create ${model}`, error);
+    await notifyAdminError("signup");
     throw new AppError(`Failed to create ${model}`, error.message, 500);
   }
 };
@@ -178,6 +181,7 @@ const getMe = async (userId: string): Promise<User | null> => {
     return user as User | null;
   } catch (error: any) {
     logger.error(`getMe(): Failed to get ${model}`, error);
+    await notifyAdminError("getMe");
     throw new AppError(`Failed to get ${model}`, error.message);
   }
 };
@@ -197,6 +201,7 @@ const sendVerificationMail = async (email: string) => {
 
   } catch (error) {
     logger.error(`sendVerificationMeail(): Failed to send verification email`, error);
+    await notifyAdminError("send verification email");
     throw new AppError(`Failed to send verification email`, error.message);
   }
 };
@@ -223,9 +228,11 @@ const verifyEmail = async (token: string) => {
         name: user.name,
       }
     }
-  } catch (error: any) {
+  } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error(`verifyEmail(): Failed to verify email`, error);
-    throw new AppError(`Failed to verify email`, error.message);
+    await notifyAdminError("verify email");
+    throw new AppError(`Failed to verify email`, (error as Error).message);
   }
 }
 
@@ -264,7 +271,9 @@ const forgetPassword = async (email: string) => {
       token
     }
   } catch (error) {
+    if (error instanceof AppError) throw error;
     console.error("Forget password error:", error)
+    await notifyAdminError("forget password");
     throw new AppError("Error forgetting password", "Error forgetting password", 500)
   }
 }
@@ -297,6 +306,9 @@ const resetPassword = async (token: string, password: string) => {
       success: true
     }
   } catch (error) {
+    if (error instanceof AppError) throw error;
+    logger.error("resetPassword(): Failed to reset password", error);
+    await notifyAdminError("reset password");
     throw new AppError("Error resetting password", "Error resetting password", 500)
   }
 }
@@ -327,6 +339,9 @@ const verifyOtp = async (token: string, otp: number) => {
       email: decoded.email
     }
   } catch (error) {
+    if (error instanceof AppError) throw error;
+    logger.error("verifyOtp(): Failed to verify otp", error);
+    await notifyAdminError("verify otp");
     throw new AppError("Error verifying otp", "Error verifying otp", 500)
   }
 }

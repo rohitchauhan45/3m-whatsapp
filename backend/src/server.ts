@@ -17,6 +17,7 @@ import {
   connectWithDatabase,
   disconnectFromDatabase,
 } from "./libraries/db";
+import { initRealtime } from "./libraries/realtime";
 
 let connection: Server | undefined;
 
@@ -78,6 +79,7 @@ function openConnection(expressApp: Express): Promise<AddressInfo> {
 
     connection = expressApp.listen(webServerPort, () => {
       errorHandler.listenToErrorEvents(connection as Server);
+      initRealtime(connection as Server);
       resolve(connection!.address() as AddressInfo);
     });
   });

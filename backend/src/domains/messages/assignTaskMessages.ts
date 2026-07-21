@@ -3,15 +3,25 @@ export const sendAssignTaskMessage = (
     tasks: { name: string; rawStartTime: string; rawEndTime: string }[]
 ): string => {
     const lines: string[] = [];
-    lines.push(`👋 Hi *${userName.trim()}*`);
+    lines.push(`Hi ${userName.trim()}`);
     lines.push("");
-    lines.push("📋 *Tomorrow's tasks*:");
+    lines.push("📋 Tomorrow's tasks:");
     lines.push("");
     tasks.forEach((t) => {
-        lines.push(`${t.rawStartTime.trim()} ---> ${t.rawEndTime.trim()} : *${t.name.trim()}*`);
+        lines.push(`${t.rawStartTime.trim()} ---> ${t.rawEndTime.trim()} : *📌${t.name.trim()}*`);
     });
     return lines.join("\n");
 };
+
+/** Single-line task list for WhatsApp template {{task_list}} (no newlines allowed). */
+export const formatAssignTaskListForTemplate = (
+    tasks: { name: string; rawStartTime: string; rawEndTime: string }[],
+): string => {
+    return tasks
+        .map((t) => `${t.rawStartTime.trim()} --> ${t.rawEndTime.trim()} : 📌 *${t.name.trim()}*`)
+        .join(" | ");
+};
+
 export const sendManagerSummaryofAssisgnMessage = (
     managerName: string,
     sent: number,
@@ -21,13 +31,13 @@ export const sendManagerSummaryofAssisgnMessage = (
     failedSends: number
 ): string => {
     const lines: string[] = [];
-    lines.push(`👋 Hi *${managerName.trim()}*`);
+    lines.push(`Hi ${managerName.trim()}`);
     lines.push("");
-    lines.push("📊 *Assignment summary*");
-    lines.push(`✅ Sent to *${sent}* / *${totalUsers}* team members.`);
+    lines.push("Assignment summary");
+    lines.push(`Sent to *${sent}* / *${totalUsers}* team members.`);
     lines.push("");
     if (skippedNoTasks > 0 || skippedNoPhone > 0 || failedSends > 0) {
-        if (skippedNoTasks > 0) lines.push(`⏭️ ${skippedNoTasks} skipped (no tasks)`);
+        if (skippedNoTasks > 0) lines.push(`${skippedNoTasks} skipped (no tasks)`);
         if (skippedNoPhone > 0) lines.push(`📵 ${skippedNoPhone} skipped (no phone)`);
         if (failedSends > 0) lines.push(`⚠️ ${failedSends} send error(s)`);
         lines.push("");
@@ -46,25 +56,25 @@ export const sendManagerRemainingStatusMessage = (
     declined: { name: string; number: string; tasks: string[]; reason: string }[] = [],
 ): string => {
     const lines: string[] = [];
-    lines.push(`👋 Hi *${managerName.trim()}*`);
+    lines.push(`Hi ${managerName.trim()}`);
     lines.push("");
 
     if (members.length > 0) {
-        lines.push("⏳ *Pending responses* — not accepted/declined yet:");
+        lines.push("⏳ Pending responses — not accepted/declined yet:");
         lines.push("");
         members.forEach((m, i) => {
-            lines.push(`${i + 1}. *${m.name.trim()}* (${m.number})`);
+            lines.push(`${i + 1}. ${m.name.trim()} (${m.number})`);
             lines.push("");
         });
-        lines.push(`👥 Total: *${members.length}* member(s) remaining.`);
+        lines.push(`👥 Total: *${members.length}* member remaining.`);
         lines.push("");
     }
 
     if (declined.length > 0) {
-        lines.push("❌ *Declined — with reason:*");
+        lines.push("❌ Declined — with reason:");
         lines.push("");
         declined.forEach((m, i) => {
-            lines.push(`${i + 1}. *${m.name.trim()}* (${m.number})`);
+            lines.push(`${i + 1}. ${m.name.trim()} (${m.number})`);
             m.tasks.forEach((t) => lines.push(`   📌 ${trimTaskName(t)}`));
             lines.push(`   💬 ${m.reason.trim()}`);
             lines.push("");

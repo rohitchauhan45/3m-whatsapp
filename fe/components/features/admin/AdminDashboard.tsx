@@ -17,7 +17,7 @@ import {
   Activity,
 } from 'lucide-react';
 import { usePageHeader } from '@/lib/utils/page-header-context';
-import Modal, { ModalDetailRow } from '@/components/ui/Modal';
+import Modal, { ModalDetailGrid, ModalDetailRow } from '@/components/ui/Modal';
 import Dropdown from '@/components/ui/Dropdown';
 import {
   TIME_RANGE_OPTIONS,
@@ -38,8 +38,29 @@ import {
 import { queryKeys } from '@/lib/query-keys';
 import { cachedQueryOptions } from '@/lib/query-config';
 import ScheduleSettings from './ScheduleSettings';
+import {
+  getOnTrackStatusClassName,
+  getSentClassName,
+  getTaskStatusClassName,
+  getUserStatusClassName,
+} from '@/lib/utils/status-styles';
 
-const TRUNCATE_LENGTH = 40;
+const TRUNCATE_LENGTH_DEFAULT = 40;
+const TRUNCATE_LENGTH_LARGE = 100;
+
+function useTruncateLength() {
+  const [length, setLength] = useState(TRUNCATE_LENGTH_DEFAULT);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1280px)');
+    const update = () => setLength(mq.matches ? TRUNCATE_LENGTH_LARGE : TRUNCATE_LENGTH_DEFAULT);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  return length;
+}
 
 type TaskDetailModalData = {
   taskName: string;
@@ -67,6 +88,13 @@ function formatTaskStatusLabel(status: string | null | undefined): string {
   if (status === 'onTrack') return 'in progress';
   if (status === 'inProgress') return 'in progress';
   return status;
+}
+
+function getTaskDisplayStatus(task: {
+  status: string;
+  finaldecision?: string | null;
+}): string {
+  return task.finaldecision ?? task.status;
 }
 
 function formatModalDateTime(iso: string | null | undefined): string {
@@ -97,7 +125,7 @@ function buildAllTaskDetailModal(
     rawEndTime: task.rawEndTime,
     startAt: task.startAt,
     endAt: task.endAt,
-    status: task.status,
+    status: getTaskDisplayStatus(task),
     sent: task.sent,
     sendAt: task.sendAt,
     howmuchComplete: task.howmuchComplete,
@@ -109,22 +137,28 @@ function buildAllTaskDetailModal(
   };
 }
 
-function truncateText(text: string) {
-  if (text.length <= TRUNCATE_LENGTH) return text;
-  return `${text.slice(0, TRUNCATE_LENGTH)}....`;
+function truncateText(text: string, maxLength: number) {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}....`;
 }
 
-function TruncatedText({ text }: { text: string | null | undefined }) {
+function TruncatedText({
+  text,
+  maxLength,
+}: {
+  text: string | null | undefined;
+  maxLength: number;
+}) {
   const value = text?.trim() || '—';
   if (value === '—') return <span className="text-gray-400">—</span>;
 
-  const isLong = value.length > TRUNCATE_LENGTH;
-  return <span className="block truncate">{isLong ? truncateText(value) : value}</span>;
+  const isLong = value.length > maxLength;
+  return <span className="block truncate">{isLong ? truncateText(value, maxLength) : value}</span>;
 }
 
-function shouldShowRowEye(data: TaskDetailModalData) {
+function shouldShowRowEye(data: TaskDetailModalData, maxLength: number) {
   return [data.taskName, data.userName, data.userNumber, data.reason].some(
-    (v) => v !== '—' && v.length > TRUNCATE_LENGTH,
+    (v) => v !== '—' && v.length > maxLength,
   );
 }
 
@@ -317,18 +351,22 @@ function TaskStatusBadge({
 }) {
   const s = status || 'pending';
   const textSize = large ? 'text-sm' : 'text-xs';
+  const className = getTaskStatusClassName(s);
 
-  const config: Record<string, { label: string; className: string }> = {
-    completed: { label: 'completed', className: 'text-green-600' },
-    inProgress: { label: 'in progress', className: 'text-blue-600' },
-    remark: { label: 'remark', className: 'text-red-400' },
-    cancelled: { label: 'cancelled', className: 'text-red-600' },
-    notSend: { label: 'not send', className: 'text-red-600' },
-    pending: { label: 'not send', className: 'text-red-600' },
-    onTrack: { label: 'in progress', className: 'text-blue-600' },
+  const labels: Record<string, string> = {
+    completed: 'completed',
+    inProgress: 'in progress',
+    remark: 'remark',
+    cancelled: 'cancelled',
+    blocked: 'blocked',
+    hold: 'hold',
+    notSend: 'not send',
+    pending: 'not send',
+    onTrack: 'in progress',
+    deleted: 'deleted',
   };
 
-  const { label, className } = config[s] || config.pending;
+  const label = labels[s] ?? s;
 
   return <span className={`${textSize} font-semibold capitalize ${className}`}>{label}</span>;
 }
@@ -348,25 +386,21 @@ function UserStatusBadge({
   if (displayStatus === 'remaining' && sent !== undefined) {
     return (
       <span
-        className={`${textSize} font-semibold capitalize ${
-          sent ? 'text-red-600' : 'text-gray-500'
-        }`}
+        className={`${textSize} font-semibold capitalize ${getUserStatusClassName(displayStatus, sent)}`}
       >
         remaining
       </span>
     );
   }
 
-  const config: Record<string, { label: string; className: string }> = {
-    accept: { label: 'accept', className: 'text-green-600' },
-    decline: { label: 'decline', className: 'text-red-600' },
-    remaining: { label: 'remaining', className: 'text-amber-600' },
+  const labels: Record<string, string> = {
+    accept: 'accept',
+    decline: 'decline',
+    remaining: 'remaining',
   };
 
-  const { label, className } = config[displayStatus] || {
-    label: displayStatus,
-    className: 'text-gray-600',
-  };
+  const label = labels[displayStatus] ?? displayStatus;
+  const className = getUserStatusClassName(displayStatus, sent);
 
   return <span className={`${textSize} font-semibold capitalize ${className}`}>{label}</span>;
 }
@@ -431,6 +465,7 @@ export default function AdminDashboard() {
   const [userStatusFilter, setUserStatusFilter] = useState<UserStatusFilter>('remaining');
   const prevTabRef = useRef(tab);
   const pendingUserTaskSearchRef = useRef<string | null>(null);
+  const truncateLength = useTruncateLength();
 
   const goToUserTasks = (userName: string, userNumber: string) => {
     const term = userName.trim() || userNumber.trim();
@@ -538,7 +573,7 @@ export default function AdminDashboard() {
   const isPendingFilter = taskStatusFilter === 'pending';
   const isCompletedFilter = taskStatusFilter === 'completed';
   const isCancelledFilter = taskStatusFilter === 'cancelled';
-  const showTaskStatusCol = !isAllFilter && isPendingFilter;
+  const showTaskStatusCol = isAllFilter || isPendingFilter;
   const showTaskReasonCol = !isAllFilter && (isRemarkFilter || isCancelledFilter);
   const showExtraTimeCol = !isAllFilter && isDelayedFilter;
   const showHowMuchCompleteCol = !isAllFilter && isDelayedFilter;
@@ -646,16 +681,16 @@ export default function AdminDashboard() {
                     <DataTableShell>
                       <table className="w-full text-base table-fixed">
                         <colgroup>
-                          <col style={{ width: isAllFilter ? '20%' : '18%' }} />
+                          <col style={{ width: isAllFilter ? '16%' : '18%' }} />
                           <col
                             style={{
-                              width: isAllFilter ? '38%' : isRemarkFilter ? '22%' : '28%',
+                              width: isAllFilter ? '28%' : isRemarkFilter ? '22%' : '28%',
                             }}
                           />
                           {showTaskDateColInTable && <col style={{ width: '8%' }} />}
-                          <col style={{ width: isAllFilter ? '14%' : '9%' }} />
-                          <col style={{ width: isAllFilter ? '14%' : '9%' }} />
-                          {showTaskStatusCol && <col style={{ width: '10%' }} />}
+                          <col style={{ width: isAllFilter ? '12%' : '9%' }} />
+                          <col style={{ width: isAllFilter ? '12%' : '9%' }} />
+                          {showTaskStatusCol && <col style={{ width: isAllFilter ? '12%' : '10%' }} />}
                           {showExtraTimeCol && <col style={{ width: '10%' }} />}
                           {showHowMuchCompleteCol && <col style={{ width: '12%' }} />}
                           {showTaskReasonCol && <col style={{ width: taskReasonWidth }} />}
@@ -688,7 +723,7 @@ export default function AdminDashboard() {
                                   : buildFilterTaskDetailModal(group, task);
                                 const showEye = isAllFilter
                                   ? true
-                                  : !isPendingFilter && shouldShowRowEye(detailData);
+                                  : !isPendingFilter && shouldShowRowEye(detailData, truncateLength);
 
                                 return (
                                   <tr
@@ -705,15 +740,15 @@ export default function AdminDashboard() {
                                         className="px-4 py-3 align-top border-r border-gray-100 bg-gray-50/40"
                                       >
                                         <div className="font-medium text-gray-900">
-                                          <TruncatedText text={group.name} />
+                                          <TruncatedText text={group.name} maxLength={truncateLength} />
                                         </div>
                                         <div className="text-sm text-gray-500 mt-1">
-                                          <TruncatedText text={group.number} />
+                                          <TruncatedText text={group.number} maxLength={truncateLength} />
                                         </div>
                                       </td>
                                     )}
                                     <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                                      <TruncatedText text={task.name} />
+                                      <TruncatedText text={task.name} maxLength={truncateLength} />
                                     </td>
                                     {showTaskDateColInTable && (
                                       <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
@@ -725,7 +760,11 @@ export default function AdminDashboard() {
                                     {showTaskStatusCol && (
                                       <td className="px-4 py-3">
                                         <TaskStatusBadge
-                                          status={task.status}
+                                          status={
+                                            isAllFilter
+                                              ? getTaskDisplayStatus(task)
+                                              : task.status
+                                          }
                                           large
                                         />
                                       </td>
@@ -737,15 +776,15 @@ export default function AdminDashboard() {
                                     )}
                                     {showHowMuchCompleteCol && (
                                       <td className="px-4 py-3 text-gray-700">
-                                        <TruncatedText text={task.howmuchComplete} />
+                                        <TruncatedText text={task.howmuchComplete} maxLength={truncateLength} />
                                       </td>
                                     )}
                                     {showTaskReasonCol && (
                                       <td className="px-4 py-3 text-gray-600">
                                         {isCancelledFilter ? (
-                                          <TruncatedText text="user decline, for more info see in user tab" />
+                                          <TruncatedText text="user decline, for more info see in user tab" maxLength={truncateLength} />
                                         ) : (
-                                          <TruncatedText text={task.remarkReason} />
+                                          <TruncatedText text={task.remarkReason} maxLength={truncateLength} />
                                         )}
                                       </td>
                                     )}
@@ -814,7 +853,7 @@ export default function AdminDashboard() {
           {tab === 'user' && (
             <div className="space-y-12 flex flex-col flex-1 min-h-0">
               {userCardsQuery.data && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                   <StatCard
                     title="Accepted"
                     value={userCardsQuery.data.accept}
@@ -826,6 +865,12 @@ export default function AdminDashboard() {
                     value={userCardsQuery.data.decline}
                     icon={UserX}
                     iconColor="text-red-600"
+                  />
+                  <StatCard
+                    title="Remaining"
+                    value={userCardsQuery.data.remaining}
+                    icon={Clock}
+                    iconColor="text-amber-600"
                   />
                   <StatCard
                     title="Attended"
@@ -932,7 +977,7 @@ export default function AdminDashboard() {
                               )}
                               {showUserReasonCol && (
                                 <td className="px-4 py-3 text-gray-600">
-                                  <TruncatedText text={dt.remarkReason} />
+                                  <TruncatedText text={dt.remarkReason} maxLength={truncateLength} />
                                 </td>
                               )}
                               {showUserSentCol && (
@@ -1015,10 +1060,10 @@ export default function AdminDashboard() {
         open={!!userDetailModal}
         onClose={() => setUserDetailModal(null)}
         title="User Details"
-        size="lg"
+        size="xl"
       >
         {userDetailModal && (
-          <>
+          <ModalDetailGrid>
             <ModalDetailRow label="User Name" value={userDetailModal.user?.name || '—'} />
             <ModalDetailRow label="Number" value={userDetailModal.user?.number || '—'} />
             <ModalDetailRow
@@ -1035,33 +1080,46 @@ export default function AdminDashboard() {
                   ? userDetailModal.sent
                   : undefined,
               )}
+              valueClassName={getUserStatusClassName(
+                userDetailModal.status,
+                !userDetailModal.status || userDetailModal.status === 'remaining'
+                  ? userDetailModal.sent
+                  : undefined,
+              )}
             />
-            <ModalDetailRow label="On Track" value={userDetailModal.finaldecision || '—'} />
             <ModalDetailRow
-              label="Decline Reason"
-              value={userDetailModal.remarkReason || '—'}
-            />
-            <ModalDetailRow
-              label="Absent Reason"
-              value={userDetailModal.absentReason || '—'}
+              label="On Track"
+              value={userDetailModal.finaldecision || '—'}
+              valueClassName={getOnTrackStatusClassName(userDetailModal.finaldecision)}
+              hideWhenEmpty={false}
             />
             <ModalDetailRow
               label="Sent"
               value={userDetailModal.sent ? 'Yes' : 'not send'}
+              valueClassName={getSentClassName(userDetailModal.sent)}
             />
-          </>
+            <ModalDetailRow
+              label="Decline Reason"
+              value={userDetailModal.remarkReason || '—'}
+              fullWidth
+            />
+            <ModalDetailRow
+              label="Absent Reason"
+              value={userDetailModal.absentReason || '—'}
+              fullWidth
+            />
+          </ModalDetailGrid>
         )}
       </Modal>
 
       <Modal
         open={!!taskDetailModal}
         onClose={() => setTaskDetailModal(null)}
-        title="Task Details"
-        size="lg"
+        title={taskDetailModal?.taskName || 'Task Details'}
+        size="xl"
       >
         {taskDetailModal && (
-          <>
-            <ModalDetailRow label="Task Name" value={taskDetailModal.taskName} />
+          <ModalDetailGrid>
             <ModalDetailRow label="User Name" value={taskDetailModal.userName} />
             <ModalDetailRow label="User Number" value={taskDetailModal.userNumber} />
             {taskDetailModal.date !== undefined && (
@@ -1071,9 +1129,6 @@ export default function AdminDashboard() {
                   taskDetailModal.date ? formatShortDisplayDate(taskDetailModal.date) : '—'
                 }
               />
-            )}
-            {taskDetailModal.description !== undefined && (
-              <ModalDetailRow label="Description" value={taskDetailModal.description || '—'} />
             )}
             {taskDetailModal.rawStartTime !== undefined && (
               <ModalDetailRow label="Start Time" value={taskDetailModal.rawStartTime || '—'} />
@@ -1097,12 +1152,14 @@ export default function AdminDashboard() {
               <ModalDetailRow
                 label="Status"
                 value={formatTaskStatusLabel(taskDetailModal.status)}
+                valueClassName={getTaskStatusClassName(taskDetailModal.status)}
               />
             )}
             {taskDetailModal.sent !== undefined && (
               <ModalDetailRow
                 label="Sent"
                 value={taskDetailModal.sent ? 'Yes' : 'not send'}
+                valueClassName={getSentClassName(taskDetailModal.sent)}
               />
             )}
             {taskDetailModal.sendAt !== undefined && (
@@ -1129,11 +1186,19 @@ export default function AdminDashboard() {
             {taskDetailModal.totalTime !== undefined && (
               <ModalDetailRow label="Total Time" value={taskDetailModal.totalTime || '—'} />
             )}
+            {taskDetailModal.description !== undefined && (
+              <ModalDetailRow
+                label="Description"
+                value={taskDetailModal.description || '—'}
+                fullWidth
+              />
+            )}
             <ModalDetailRow
               label="Remark Reason"
               value={taskDetailModal.remarkReason ?? taskDetailModal.reason}
+              fullWidth
             />
-          </>
+          </ModalDetailGrid>
         )}
       </Modal>
     </div>

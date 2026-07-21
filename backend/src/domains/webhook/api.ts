@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response, Router } from "express";
 import logger from "../../libraries/log/logger";
+import { notifyAdminError } from "../../libraries/util/notifyAdminError";
 import { handleWebhook, verifyWebhookQuery } from "./service";
 
 export const routes = (): Router => {
@@ -11,9 +12,10 @@ export const routes = (): Router => {
 
             const body = req.body as unknown;
 
-            void handleWebhook(body).catch((err: unknown) => {
+            void handleWebhook(body).catch(async (err: unknown) => {
                 const msg = err instanceof Error ? err.message : String(err);
                 logger.error("webhook handleWebhook failed:", msg);
+                await notifyAdminError("webhook handleWebhook");
             });
         } catch (error) {
             next(error);

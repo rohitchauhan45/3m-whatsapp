@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import logger from "../../libraries/log/logger";
 import { prisma } from "../../libraries/db";
 import { AppError } from "../../libraries/error-handling/AppError";
+import { notifyAdminError } from "../../libraries/util/notifyAdminError";
 
 const model = "user";
 
@@ -75,6 +76,7 @@ const create = async (data: UserInput): Promise<User> => {
       throw error;
     }
     logger.error(`create(): Failed to create ${model}`, error);
+    await notifyAdminError("create user");
     throw new AppError(`Failed to create ${model}`, error.message);
   }
 };
@@ -136,6 +138,7 @@ const search = async (
     };
   } catch (error: any) {
     logger.error(`search(): Failed to search ${model}`, error);
+    await notifyAdminError("search users");
     throw new AppError(`Failed to search ${model}`, error.message, 400);
   }
 };
@@ -158,6 +161,7 @@ const getById = async (id: string): Promise<User | null> => {
     return item as User | null;
   } catch (error: any) {
     logger.error(`getById(): Failed to get ${model}`, error);
+    await notifyAdminError("get user by id");
     throw new AppError(`Failed to get ${model}`, error.message);
   }
 };
@@ -188,6 +192,7 @@ const updateById = async (
       return null;
     }
     logger.error(`updateById(): Failed to update ${model}`, error);
+    await notifyAdminError("update user");
     throw new AppError(`Failed to update ${model}`, error.message);
   }
 };
@@ -202,6 +207,7 @@ const deleteById = async (id: string): Promise<boolean> => {
       return false;
     }
     logger.error(`deleteById(): Failed to delete ${model}`, error);
+    await notifyAdminError("delete user");
     throw new AppError(`Failed to delete ${model}`, error.message);
   }
 };

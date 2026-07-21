@@ -5,6 +5,7 @@ import { AcceptStatus } from "@prisma/client";
 import { sendMessageOnWhatsapp, sendWhatsAppButtons } from "../whtsapp/sendWhatsApp";
 import { calculateDistance } from "../../libraries/util/Attendence/distance";
 import { numberLookupVariants } from "../../libraries/util/Task/number";
+import { notifyAdminError } from "../../libraries/util/notifyAdminError";
 
 const WORK_AREA_LAT = Number(process.env.WORK_AREA_LAT ?? "0");
 const WORK_AREA_LONG = Number(process.env.WORK_AREA_LONG ?? "0");
@@ -74,6 +75,7 @@ export const sendPunchInButton = async () => {
         };
     } catch (error: any) {
         logger.error(`Error in send punch in button to user`, error);
+        await notifyAdminError("send punch in button to user");
         throw new AppError(`Error in send punch in button to user`, error.message);
     }
 };
@@ -149,6 +151,7 @@ export const attendence = async (from: string, lat: number, long: number) => {
         });
     } catch (error: any) {
         logger.error("Error in handle attendence ", error);
+        await notifyAdminError("handle attendance");
         throw new AppError("Internal server while handle Attendence ", error.message);
     }
 };

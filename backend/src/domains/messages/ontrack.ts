@@ -1,12 +1,12 @@
 export const finalDecisionMessage = (userName: string, tasks: { name: string }[]): string => {
     const lines: string[] = [
-        `☀️ Hi *${userName.trim()}*`,
+        `☀️ Hi ${userName.trim()}`,
         "",
-        "*Morning check-in* — are today's tasks on track?",
+        "Morning check — are today's tasks on track?",
     ];
     if (tasks.length > 0) {
         lines.push("");
-        tasks.forEach((t, i) => lines.push(`${i + 1}. 📌 ${t.name.trim()}`));
+        tasks.forEach((t, i) => lines.push(`${i + 1}. 📌 *${t.name.trim()}*`));
     }
     return lines.join("\n");
 };

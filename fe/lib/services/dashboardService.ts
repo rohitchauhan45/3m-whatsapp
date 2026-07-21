@@ -31,6 +31,7 @@ export interface TaskCardData {
 export interface UserCardData {
   accept: number;
   decline: number;
+  remaining: number;
   attented: number;
   totaluser: number;
 }
@@ -59,6 +60,7 @@ export interface TaskTableUserTask {
   startAt: string;
   endAt: string;
   status: string;
+  finaldecision: string | null;
   remarkReason: string | null;
   extratTme: number | null;
   howmuchComplete: string | null;

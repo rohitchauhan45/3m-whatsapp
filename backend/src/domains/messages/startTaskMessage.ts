@@ -13,15 +13,3 @@ export const startTaskEarlyMessage = (task: {
     lines.push("Update status — tap a button below.");
     return lines.join("\n");
 };
-
-export const taskStartNowMessage = (task: {
-    name: string;
-    rawEndTime: string;
-}): string => {
-    const lines: string[] = [];
-    lines.push(`📌 *${task.name.trim()}*`);
-    lines.push(`⏰ Complete by: *${task.rawEndTime.trim()}*`);
-    lines.push("");
-    lines.push("▶️ Please start this task now.");
-    return lines.join("\n");
-};

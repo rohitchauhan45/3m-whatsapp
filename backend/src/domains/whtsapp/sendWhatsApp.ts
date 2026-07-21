@@ -1,6 +1,5 @@
 import axios, { isAxiosError } from "axios";
 import dotenv from "dotenv";
-import { template } from "lodash";
 
 dotenv.config();
 
@@ -51,6 +50,14 @@ function axiosErrorPayload(error: unknown): string {
     }
     if (error instanceof Error) return error.message;
     return String(error);
+}
+
+/** Meta rejects template params with newlines, tabs, or 5+ consecutive spaces. */
+export function sanitizeWhatsAppTemplateParam(text: string): string {
+    return text
+        .replace(/[\r\n\t]+/g, " ")
+        .replace(/ {5,}/g, "    ")
+        .trim();
 }
 
 export const sendMessageOnWhatsapp = async (data: whatsappmessagePayload) => {
@@ -254,7 +261,7 @@ export const sendWhatsappTemplate = async (data: whatsappTemplatepayload) => {
                             parameters: parameters.map((param) => ({
                                 type: "text",
                                 parameter_name: param.parameter_name,
-                                text: param.text,
+                                text: sanitizeWhatsAppTemplateParam(param.text),
                             })),
                         });
                     }

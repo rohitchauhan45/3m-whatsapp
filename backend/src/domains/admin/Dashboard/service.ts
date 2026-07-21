@@ -1,8 +1,9 @@
-import { DailyTask, Prisma, Task, TaskStaus } from "@prisma/client";
+import { DailyTask, Prisma, Task, TaskFinalStatus, TaskStaus } from "@prisma/client";
 import { prisma } from "../../../libraries/db";
 import { AppError } from "../../../libraries/error-handling/AppError";
 import logger from "../../../libraries/log/logger";
 import { convertTimeRangeintoDate } from "../../../libraries/util/Admin/timing";
+import { notifyAdminError } from "../../../libraries/util/notifyAdminError";
 
 export type timeRange = "today" | "yesterday" | "thisweek" | "lastweek" | "thismonth" | "lastmonth" | "thisyear"
 
@@ -26,6 +27,7 @@ export type TaskTableUserTask = {
     startAt: Date;
     endAt: Date;
     status: TaskStaus;
+    finaldecision: TaskFinalStatus | null;
     remarkReason: string | null;
     howmuchComplete: string | null;
     actualTime: string | null;
@@ -93,9 +95,9 @@ export const taskCardDetails = async (time: timeRange) => {
             prisma.task.count({
                 where: { ...baseWhere, extratTme: { not: null, gt: 0 } },
             }),
-            prisma.task.count({ where: { ...baseWhere, status: TaskStaus.completed } }),
+            prisma.task.count({ where: { ...baseWhere, finaldecision: TaskFinalStatus.completed } }),
             prisma.task.count({ where: { ...baseWhere, status: TaskStaus.remark } }),
-            prisma.task.count({ where: { ...baseWhere, status: TaskStaus.cancelled } }),
+            prisma.task.count({ where: { ...baseWhere, finaldecision: TaskFinalStatus.cancelled } }),
             prisma.task.count({
                 where: {
                     ...baseWhere,
@@ -121,11 +123,19 @@ export const taskCardDetails = async (time: timeRange) => {
 
     } catch (error) {
         logger.error("Error in Admin-Dashboard detalis !", error)
+        await notifyAdminError("Admin Dashboard summary");
         throw new AppError("Internal server Error while Fetch Dashboard summary", error.message)
     }
 };
 
-export type TaskTableStatusFilter = TaskStaus | "all" | "pending" | "delayed" | "inprogress";
+export type TaskTableStatusFilter =
+    | "all"
+    | "pending"
+    | "delayed"
+    | "inprogress"
+    | "remark"
+    | "completed"
+    | "cancelled";
 
 function buildTaskTableStatusWhere(
     statusFilter: TaskTableStatusFilter,
@@ -136,7 +146,10 @@ function buildTaskTableStatusWhere(
     if (statusFilter === "inprogress") {
         return { status: { in: [TaskStaus.inProgress] } };
     }
-    return { status: statusFilter };
+    if (statusFilter === "remark") return { status: TaskStaus.remark };
+    if (statusFilter === "completed") return { finaldecision: TaskFinalStatus.completed };
+    if (statusFilter === "cancelled") return { finaldecision: TaskFinalStatus.cancelled };
+    return {};
 }
 
 function buildTaskTableSearchWhere(searchTerm: string): Prisma.TaskWhereInput {
@@ -183,7 +196,7 @@ async function taskTableGroupedByUser(
         orderBy: [{ user: { name: "asc" } }, { startAt: "asc" }],
         include: {
             user: { select: { id: true, name: true, number: true } },
-            dailyTask: { select: { date: true } },
+            dailyTask: { select: { date: true, remarkReason: true } },
         },
     });
 
@@ -200,7 +213,8 @@ async function taskTableGroupedByUser(
             startAt: taskRow.startAt,
             endAt: taskRow.endAt,
             status: taskRow.status,
-            remarkReason: taskRow.remarkReason,
+            finaldecision: taskRow.finaldecision,
+            remarkReason: taskRow.remarkReason ?? dailyTask.remarkReason,
             extratTme: taskRow.extratTme,
             howmuchComplete: taskRow.howmuchComplete,
             actualTime: taskRow.actualTime,
@@ -242,6 +256,7 @@ export const taskTable = async (
         return await taskTableGroupedByUser(query, time);
     } catch (error) {
         logger.error("Error in fetch task table Details !", error);
+        await notifyAdminError("fetch task table details");
         throw new AppError("Internal server Error while fetch the Task Table Details", error.message);
     }
 };
@@ -254,9 +269,15 @@ export const userCardDetails = async (time: timeRange) => {
             date: dateFilter,
         };
 
-        const [accept, decline, attented, usersInRange] = await Promise.all([
+        const [accept, decline, remaining, attented, usersInRange] = await Promise.all([
             prisma.dailyTask.count({ where: { ...dailyTaskBase, status: "accept" } }),
             prisma.dailyTask.count({ where: { ...dailyTaskBase, status: "decline" } }),
+            prisma.dailyTask.count({
+                where: {
+                    ...dailyTaskBase,
+                    OR: [{ status: "remaining" }, { status: null }],
+                },
+            }),
             prisma.attendence.count({
                 where: {
                     type: "morning",
@@ -274,6 +295,7 @@ export const userCardDetails = async (time: timeRange) => {
         const data = {
             accept,
             decline,
+            remaining,
             attented,
             totaluser: usersInRange.length,
         };
@@ -285,6 +307,7 @@ export const userCardDetails = async (time: timeRange) => {
         };
     } catch (error) {
         logger.error("Error in fetch user dailyTask Details", error);
+        await notifyAdminError("fetch user dailyTask details");
         throw new AppError("Internal server Error while fetch user detalis for Dashboard", error.message);
     }
 };
@@ -345,6 +368,7 @@ export const usertable = async (
         };
     } catch (error) {
         logger.error("Error in fetch the dailyTask details for the Admin", error);
+        await notifyAdminError("fetch dailyTask details for Admin");
         throw new AppError(
             "Internal server Error while fetcht the user-table data for Dashboard",
             error.message,

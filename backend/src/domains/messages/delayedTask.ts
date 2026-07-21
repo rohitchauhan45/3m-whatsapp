@@ -19,16 +19,16 @@ export const delayinprogressTaskMessagetoManager = (
     },
 ): string => {
     const lines: string[] = [];
-    lines.push(`👋 Hi *${managerName.trim()}*`);
+    lines.push(`Hi ${managerName.trim()}`);
     lines.push("");
-    lines.push("⚠️ *Task delayed*");
-    lines.push(`*${userName.trim()}* (${number.trim()})`);
+    lines.push("⚠️ Task delayed");
+    lines.push(`${userName.trim()} (${number.trim()})`);
     lines.push("");
     lines.push(`📌 *${task.name.trim()}*`);
-    lines.push(`▶️ Start: *${task.startTime.trim()}*`);
-    lines.push(`🕐 End was: *${task.oldEndTime.trim()}*`);
-    lines.push(`🔴 New end: *${task.newEndTime.trim()}*`);
-    lines.push(`⏳ Extra time: *+${formatExtraMinutes(task.extraMinutes)}*`);
+    lines.push(`Start: ${task.startTime.trim()}`);
+    lines.push(`End was: ${task.oldEndTime.trim()}`);
+    lines.push(`New end: ${task.newEndTime.trim()}`);
+    lines.push(`Extra time: *+${formatExtraMinutes(task.extraMinutes)}*`);
     return lines.join("\n");
 };
 
@@ -40,23 +40,23 @@ export const delaystartTaskMessagetoManager = (
     task: {
         name: string;
         oldStartTime: string;
-        newStartTime:string
+        newStartTime: string
         oldEndTime: string;
         newEndTime: string;
         extraMinutes: number;
     },
 ): string => {
     const lines: string[] = [];
-    lines.push(`👋 Hi *${managerName.trim()}*`);
+    lines.push(`Hi ${managerName.trim()}`);
     lines.push("");
-    lines.push("⚠️ *Start Task delayed*");
-    lines.push(`*${userName.trim()}* (${number.trim()})`);
+    lines.push("⚠️ Start Task delayed");
+    lines.push(`${userName.trim()} (${number.trim()})`);
     lines.push("");
     lines.push(`📌 *${task.name.trim()}*`);
-    lines.push(`⏱️ Start was : *${task.oldStartTime.trim()}*`);
-    lines.push(`▶️ New Start : *${task.oldStartTime.trim()}*`);
-    lines.push(`🕐 End was: *${task.oldEndTime.trim()}*`);
-    lines.push(`🔴 New end: *${task.newEndTime.trim()}*`);
-    lines.push(`⏳ Extra time : *+${formatExtraMinutes(task.extraMinutes)}*`);
+    lines.push(`Start was : ${task.oldStartTime.trim()}`);
+    lines.push(`New Start : ${task.oldStartTime.trim()}`);
+    lines.push(`End was: ${task.oldEndTime.trim()}`);
+    lines.push(`New end: ${task.newEndTime.trim()}`);
+    lines.push(`Extra time : *+${formatExtraMinutes(task.extraMinutes)}*`);
     return lines.join("\n");
 };

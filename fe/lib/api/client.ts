@@ -8,6 +8,18 @@ function getApiBaseUrl(): string {
   return url.replace(/\/$/, '');
 }
 
+/** Socket.IO attaches to the HTTP server origin, not the REST API path. */
+export function getRealtimeServerUrl(): string | null {
+  const url = process.env.NEXT_PUBLIC_AUTH_SERVER_URL?.trim();
+  if (!url) return null;
+
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
 export const apiClient = axios.create({
   baseURL: getApiBaseUrl(),
 });

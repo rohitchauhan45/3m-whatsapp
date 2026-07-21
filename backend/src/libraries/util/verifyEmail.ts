@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import { notifyAdminError } from './notifyAdminError';
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -137,6 +138,7 @@ export const sendEmail = async (email: String, verificationLink: String) => {
     return true
   } catch (error) {
     console.log(error);
+    await notifyAdminError("send verification email");
     return false
   }
 }
@@ -179,6 +181,7 @@ export const sendEmailForResetPassword = async (email: String, otp: Number) => {
       return true
   } catch (error) {
       console.error("Error sending email:", error)
+      await notifyAdminError("send reset password email");
       return false
   }
 }

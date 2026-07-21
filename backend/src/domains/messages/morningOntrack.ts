@@ -11,12 +11,12 @@ export const morningRemarkResontoManager = (
     reason: string,
 ): string => {
     const lines: string[] = [];
-    lines.push(`👋 Hi *${manager.trim()}*`);
+    lines.push(`Hi ${manager.trim()}`);
     lines.push("");
-    lines.push("⚠️ *remark — with reason:*");
-    lines.push(`*${user.trim()}* (${number.trim()})`);
+    lines.push("remark — with reason:");
+    lines.push(`${user.trim()} (${number.trim()})`);
     tasks.forEach((t) => lines.push(`   📌 ${trimTaskName(t)}`));
-    lines.push(`👉 ${reason.trim()}`);
+    lines.push(`🚨 *${reason.trim()}*`);
     return lines.join("\n");
 };
 
@@ -28,11 +28,11 @@ export const morningAbsentResontoManager = (
     reason: string,
 ): string => {
     const lines: string[] = [];
-    lines.push(`👋 Hi *${manager.trim()}*`);
+    lines.push(`Heyy ${manager.trim()}`);
     lines.push("");
     lines.push("❌ *Declined — with reason:*");
-    lines.push(`*${user.trim()}* (${number.trim()})`);
+    lines.push(`${user.trim()} (${number.trim()})`);
     tasks.forEach((t) => lines.push(`   📌 ${trimTaskName(t)}`));
-    lines.push(`👉 ${reason.trim()}`);
+    lines.push(`🚨 *${reason.trim()}*`);
     return lines.join("\n");
 };

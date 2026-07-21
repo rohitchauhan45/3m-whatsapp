@@ -1,4 +1,4 @@
-import { AcceptStatus, DelayType, Provider, Role, TaskStaus, onTrackStatus } from "@prisma/client";
+import { AcceptStatus, DelayType, Provider, Role, TaskStaus, TaskFinalStatus, onTrackStatus } from "@prisma/client";
 import { prisma } from "../../libraries/db";
 import logger from "../../libraries/log/logger";
 import { excelAssignRowSchema, formatExcelRowZodError } from "./request";
@@ -10,22 +10,66 @@ import { groupAssignTaskSheetRows, normalizeSheetDate, readAssignTaskExcelSheetR
 import { sendMessageOnWhatsapp, sendWhatsAppButtons, sendWhatsappTemplate } from "../whtsapp/sendWhatsApp";
 import {
     sendAssignTaskMessage,
+    formatAssignTaskListForTemplate,
     sendManagerRemainingStatusMessage,
     sendManagerSummaryofAssisgnMessage,
 } from "../messages/assignTaskMessages";
 import { toStoredIndianWhatsAppNumber } from "../../libraries/util/Task/number";
-import { managerFollowUpSummaryMessage, taskremarkresontoManager, userFollowUpTaskMessage } from "../messages/followupMessage";
-import { startTaskEarlyMessage, taskStartNowMessage } from "../messages/startTaskMessage";
+import { managerFollowUpFailureMessage, managerFollowUpSummaryMessage, taskremarkresontoManager, userFollowUpTaskMessage } from "../messages/followupMessage";
+import { startTaskEarlyMessage } from "../messages/startTaskMessage";
 import { reasonMessage } from "../messages/reason";
 import { normalizeChoiceforTaskfollowUp, normlizeChiocestartChoice, normlizeChoiceforDaily } from "../../libraries/util/Task/status";
 import { finalDecisionMessage } from "../../domains/messages/ontrack";
 import { morningAbsentResontoManager, morningRemarkResontoManager } from "../messages/morningOntrack";
 import { delayinprogressTaskMessagetoManager, delaystartTaskMessagetoManager } from "../messages/delayedTask";
-import e from "express";
 import { count } from "console";
+import { resolveTaskPositions } from "../../libraries/util/Task/position";
+import { previousTaskmsg } from "../../domains/messages/previousTask";
+import {
+    formatCalendarDateLabel,
+    getISTTodayCalendarDate,
+    getISTTomorrowCalendarDate,
+    isFutureISTCalendarDate,
+} from "../../libraries/util/Task/istDate";
+import { notifyAdminError } from "../../libraries/util/notifyAdminError";
 
 type choices = "inprogress" | "remark" | "done"
 type startChoice = "start" | "taskquery" | "delay"
+type finalchoice = "blocked" | "completed" | "hold"
+
+const PREVIOUS_TASK_HOLD_REMINDER_MS = 2 * 60 * 60 * 1000
+
+type PreviousTaskFollowupData = {
+    id: string;
+    position: number;
+    name: string;
+    rawStartTime: string;
+    rawEndTime: string;
+};
+
+async function sendPreviousTaskFollowupButtons(
+    number: string,
+    task: PreviousTaskFollowupData,
+): Promise<boolean> {
+    const msg = previousTaskmsg(task.name, task.rawStartTime, task.rawEndTime)
+    const result = await sendWhatsAppButtons({
+        number,
+        message: msg,
+        buttons: [
+            { id: `hold_${task.id}`, title: "Hold" },
+            { id: `blocked_${task.id}`, title: "Blocked" },
+            { id: `completed_${task.id}`, title: "Completed" },
+        ],
+    })
+
+    if (result.success) {
+        logger.info(`send previousTask follow-up to ${number} task position ${task.position}`)
+    } else {
+        logger.info(`Error in send previousTask follow-up to ${number} task position ${task.position}`)
+    }
+
+    return result.success
+}
 
 export type CreateTaskResult = {
     success: boolean;
@@ -142,6 +186,16 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
             continue;
         }
 
+        if (!isFutureISTCalendarDate(taskDate)) {
+            failedRows.push({
+                row: g.startRow,
+                reason:
+                    `Date must be in the future (not today or past). ` +
+                    `Today is ${formatCalendarDateLabel(getISTTodayCalendarDate())} (IST).`,
+            });
+            continue;
+        }
+
         const parsed = excelAssignRowSchema.safeParse({
             date: taskDate,
             name: g.name,
@@ -163,7 +217,7 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
         let isNewUser = false;
         let isNewManager = false;
         let count = 0
-        
+
         try {
             await prisma.$transaction(async (tx) => {
                 let manager = await tx.user.findFirst({
@@ -237,7 +291,7 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
                     });
                 }
 
-                for (const task of data.tasks) {
+                const tasksWithTime = data.tasks.map((task) => {
                     const startAt = parseTimeOnDate(data.date, task.rawStartTime);
                     const endAt = parseTimeOnDate(data.date, task.rawEndTime);
                     if (!startAt || !endAt) {
@@ -245,16 +299,23 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
                             `Invalid start/end time for task "${task.name}". Use values like 9am, 11am, 4:25pm, or 16:30.`
                         );
                     }
+                    return { ...task, startAt, endAt };
+                });
+
+                const orderedTasks = resolveTaskPositions(tasksWithTime);
+
+                for (const task of orderedTasks) {
                     await tx.task.create({
                         data: {
                             name: task.name,
                             userId,
                             dailyTaskId: dailyTask.id,
+                            position: task.position,
                             status: TaskStaus.notSend,
                             rawStartTime: task.rawStartTime,
                             rawEndTime: task.rawEndTime,
-                            startAt,
-                            endAt,
+                            startAt: task.startAt,
+                            endAt: task.endAt,
                         },
                     });
                 }
@@ -315,6 +376,9 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
 
 export const assignTask = async (managerId?: string): Promise<TaskResult> => {
     try {
+        const assignDate = getISTTomorrowCalendarDate();
+        const assignDateLabel = formatCalendarDateLabel(assignDate);
+
         const managers = await prisma.user.findMany({
             where: {
                 ...(managerId ? { id: managerId } : {}),
@@ -329,9 +393,11 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                             where:
                             {
                                 deletedAt: null,
+                                date: assignDate,
                                 sent: false,
-                                sendAt: null
+                                sendAt: null,
                             },
+                            orderBy: { date: "asc" },
                             include: {
                                 tasks: {
                                     where: { deletedAt: null },
@@ -367,7 +433,9 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                 const dailyTask = child.Dailytask?.[0];
                 if (!dailyTask || dailyTask.tasks.length === 0) {
                     skippedNoTasks += 1;
-                    logger.info(`assign-task skip userId=${child.id} name=${child.name}: no open tasks`);
+                    logger.info(
+                        `assign-task skip userId=${child.id} name=${child.name}: no unsent tasks for ${assignDateLabel}`,
+                    );
                     continue;
                 }
 
@@ -433,17 +501,17 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                         });
                     } else {
                         // Case 3: user has conversation but window expired → send template with parameters & buttons
-                        const taskList = dailyTask.tasks
-                            .map(
-                                (t) =>
-                                    `${t.rawStartTime.trim()} ---> ${t.rawEndTime.trim()} : *${t.name.trim()}*`,
-                            )
-                            .join("\n");
+                        const taskList = formatAssignTaskListForTemplate(
+                            dailyTask.tasks.map((t) => ({
+                                name: t.name,
+                                rawStartTime: t.rawStartTime,
+                                rawEndTime: t.rawEndTime,
+                            })),
+                        );
                         sendAt = new Date();
                         result = await sendWhatsappTemplate({
                             number: child.number,
                             tname: "daily_task_assignment",
-                            // Template expects: {{user_name}} and {{task_list}}
                             parameters: [
                                 { parameter_name: "user_name", text: child.name },
                                 { parameter_name: "task_list", text: taskList },
@@ -507,7 +575,7 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
         return {
             success: true,
             status: 200,
-            message: `Processed ${totalUsers} team member(s): ${sent} message thread(s) sent, ${skippedNoTasks} without tasks, ${skippedNoPhone} without phone, ${failedSends} send error(s). Manager summary: ${managerSummarySent ? "sent" : "not sent"}.`,
+            message: `Assign (${assignDateLabel}): processed ${totalUsers} team member(s): ${sent} message thread(s) sent, ${skippedNoTasks} without tasks for that date, ${skippedNoPhone} without phone, ${failedSends} send error(s). Manager summary: ${managerSummarySent ? "sent" : "not sent"}.`,
             sent,
             skippedNoPhone,
             skippedNoTasks,
@@ -516,6 +584,7 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
         };
     } catch (error) {
         logger.error("Error in Assign task : ", error)
+        await notifyAdminError("Assign task to user")
         throw new AppError(`Error in Assign task to user`, error.message)
     }
 
@@ -553,7 +622,7 @@ export const updateTaskAcceptFromWhatsApp = async (
     if (choiceResult === AcceptStatus.decline) {
         await prisma.task.updateMany({
             where: { dailyTaskId: dailyTask.id, userId: user.id },
-            data: { status: TaskStaus.cancelled },
+            data: { finaldecision: TaskFinalStatus.cancelled },
         });
 
         // Save which declined DailyTask should receive the next text reason from this user.
@@ -608,12 +677,15 @@ export const handleDeclineReason = async (
         return true;
     } catch (error) {
         logger.error(`Error in save Decline reason into database : `, error)
+        await notifyAdminError("save Decline reason into database")
         throw new AppError(`Error in save Decline Reason into Database`, error.message)
     }
 }
 
 export const sendRemaingstatusTomanager = async (): Promise<RemainingStatusResult> => {
     try {
+        const assignDate = getISTTomorrowCalendarDate();
+
         const managers = await prisma.user.findMany({
             where: { role: Role.manager, deletedAt: null },
             include: {
@@ -639,6 +711,7 @@ export const sendRemaingstatusTomanager = async (): Promise<RemainingStatusResul
             const remainingDailyTasks = await prisma.dailyTask.findMany({
                 where: {
                     deletedAt: null,
+                    date: assignDate,
                     sent: true,
                     status: AcceptStatus.remaining,
                     userId: { in: childIds },
@@ -654,6 +727,7 @@ export const sendRemaingstatusTomanager = async (): Promise<RemainingStatusResul
             const declinedDailyTasks = await prisma.dailyTask.findMany({
                 where: {
                     deletedAt: null,
+                    date: assignDate,
                     sent: true,
                     status: AcceptStatus.decline,
                     remarkReason: { not: null },
@@ -732,15 +806,19 @@ export const sendRemaingstatusTomanager = async (): Promise<RemainingStatusResul
         };
     } catch (error) {
         logger.error("Error in send remaing Status to manager", error);
+        await notifyAdminError("send remaining status to manager");
         throw new AppError("Error in send Remaing status to manager", error.message);
     }
 };
 
 export const finalDecisionDailyTask = async (): Promise<FinalDecisionResult> => {
     try {
+        const todayDate = getISTTodayCalendarDate();
+
         const allDailyTask = await prisma.dailyTask.findMany({
             where: {
                 deletedAt: null,
+                date: todayDate,
                 sent: true,
                 status: AcceptStatus.accept,
                 finaldecision: null,
@@ -799,6 +877,7 @@ export const finalDecisionDailyTask = async (): Promise<FinalDecisionResult> => 
         };
     } catch (error) {
         logger.error("Error in FinalDecision update :", error);
+        await notifyAdminError("FinalDecision morning on tracking");
         throw new AppError("Error in FinalDecision morning on tracking ", error.message);
     }
 };
@@ -841,13 +920,16 @@ export const updateFinalDecision = async (id: string, from: string, choice: "ont
                 number: user.number,
                 message: "Thank you! Marked as on track.",
             });
+
+            await handlePreviousStartTask(updateDailyTask.id)
+
             return;
         }
 
         if (updateDailyTask.finaldecision === onTrackStatus.remark) {
             await prisma.task.updateMany({
                 where: { dailyTaskId: updateDailyTask.id, userId: user.id },
-                data: { status: TaskStaus.cancelled },
+                data: { status: TaskStaus.remark },
             });
 
             pendingFinalDecisionRemarkByUserId.set(user.id, updateDailyTask.id);
@@ -863,7 +945,7 @@ export const updateFinalDecision = async (id: string, from: string, choice: "ont
         if (updateDailyTask.finaldecision === onTrackStatus.absent) {
             await prisma.task.updateMany({
                 where: { dailyTaskId: updateDailyTask.id, userId: user.id },
-                data: { status: TaskStaus.cancelled }
+                data: { finaldecision: TaskFinalStatus.cancelled }
             })
 
             pendingFinalDecisionAbsentByUserId.set(user.id, updateDailyTask.id);
@@ -877,9 +959,42 @@ export const updateFinalDecision = async (id: string, from: string, choice: "ont
         }
     } catch (error) {
         logger.error(`Error in Handle/update finalDecision for daily Task : `, error);
+        await notifyAdminError("Handle/update on tracking morning status");
         throw new AppError(`Error in Handle/update on tracking morning status `, error.message);
     }
 };
+
+const handlePreviousStartTask = async (did: string): Promise<boolean> => {
+    try {
+        const currentTime = new Date()
+
+        const tasks = await prisma.task.findMany({
+            where: {
+                dailyTaskId: did,
+                status: "notSend",
+                startAt: { lte: currentTime },
+                finaldecision: null,
+                deletedAt: null,
+            },
+            select: {
+                id: true,
+                position: true,
+            },
+            orderBy: { position: "asc" },
+        })
+
+        if (tasks.length === 0) {
+            return true
+        }
+
+        const result = await sendStartTask(tasks.map((t) => t.id), "onTime")
+        return result.success
+    } catch (error) {
+        logger.error(`Error in find Previous Start task : `, error)
+        await notifyAdminError("Handle Previous Start Task while user Active later in Morning On-Track")
+        return false
+    }
+}
 
 export const handleFinalDecisionRemarkReason = async (
     from: string,
@@ -914,6 +1029,7 @@ export const handleFinalDecisionRemarkReason = async (
         });
 
         pendingFinalDecisionRemarkByUserId.delete(user.id);
+        await handlePreviousStartTask(pendingDailyTaskId)
 
         if (user.parentId) {
             const [manager, tasks] = await Promise.all([
@@ -950,6 +1066,7 @@ export const handleFinalDecisionRemarkReason = async (
         return true;
     } catch (error) {
         logger.error("Error in save final decision remark reason", error);
+        await notifyAdminError("save final decision remark reason");
         return false;
     }
 };
@@ -1020,13 +1137,14 @@ export const handleFinalDecisionAbsentReason = async (from: string, reason: stri
         return true;
     } catch (error) {
         logger.error("Error in save final decision Absent reason", error);
+        await notifyAdminError("save final decision Absent reason");
         return false;
     }
 }
 
 export const sendStartTask = async (
     taskIds: string[],
-    mode: "early" | "onTime" | "simple",
+    mode: "early" | "onTime",
 ): Promise<TaskResult> => {
     try {
         if (taskIds.length === 0) {
@@ -1097,16 +1215,6 @@ export const sendStartTask = async (
                     })
                     break
                 case "onTime":
-                    result = await sendMessageOnWhatsapp({
-                        number: phone,
-                        message: taskStartNowMessage({
-                            name: task.name,
-                            rawEndTime: task.rawEndTime,
-                        }),
-                    });
-                    break
-
-                case "simple":
                     result = await sendWhatsAppButtons({
                         number: phone,
                         message: startTaskEarlyMessage({
@@ -1118,10 +1226,11 @@ export const sendStartTask = async (
                         buttons: [
                             { title: "in Progress", id: `start_${task.id}` },
                             { title: "Delay", id: `delay_${task.id}` },
-                            { title: "block", id: `taskquery_${task.id}` }
+                            { title: "Block", id: `taskquery_${task.id}` }
                         ],
                     })
                     break
+
             }
 
             if (result.success) {
@@ -1201,6 +1310,7 @@ export const sendStartTask = async (
         };
     } catch (error) {
         logger.error("error in send start task ", error)
+        await notifyAdminError("send start task");
         throw new AppError("internal server Error while send start task", error.message)
     }
 }
@@ -1243,6 +1353,11 @@ export const handleStarttaskStatus = async (taskId: string, whatsappFrom: string
                 message:
                     "Thanks for update !",
             });
+
+            if (task.position > 1) {
+                await handlePreviousPendingTask(whatsappFrom, task.dailyTaskId, task.position)
+            }
+
             return;
         }
 
@@ -1271,11 +1386,12 @@ export const handleStarttaskStatus = async (taskId: string, whatsappFrom: string
                 if (first) pendingStartTaskDelayTimeByUserId.delete(first)
             }
 
-            await sendMessageOnWhatsapp({ number: user.number, message: "after much time you start the task ?" })
+            await sendMessageOnWhatsapp({ number: user.number, message: "⏱️ How long will it take you to start the task? (ex. 10min ,1hour ,24m)" })
         }
 
     } catch (error) {
         logger.error("Error in handle start task status", error)
+        await notifyAdminError("handle start task status");
         throw new AppError("Internal server Error while handle the start task Status", error.message)
     }
 }
@@ -1307,6 +1423,7 @@ export const handleStartTaskDelayTime = async (from: string, time: string) => {
                 rawStartTime: true,
                 startAt: true,
                 endAt: true,
+                position: true,
                 rawEndTime: true,
                 dailyTaskId: true,
                 dailyTask: { select: { date: true } },
@@ -1389,6 +1506,11 @@ export const handleStartTaskDelayTime = async (from: string, time: string) => {
         });
 
         await sendMessageOnWhatsapp({ number: user.number, message: "please start the task ASAP" })
+        pendingStartTaskDelayTimeByUserId.delete(user.id);
+
+        if (currentTask.position > 1) {
+            await handlePreviousPendingTask(from, currentTask.dailyTaskId, currentTask.position)
+        }
 
         const manager = currentTask.user.parent;
         const managerPhone = manager?.number?.trim() ?? "";
@@ -1417,10 +1539,10 @@ export const handleStartTaskDelayTime = async (from: string, time: string) => {
             }
         }
 
-        pendingStartTaskDelayTimeByUserId.delete(user.id);
         return true;
     } catch (error) {
         logger.error("Error in handle start task delay time", error)
+        await notifyAdminError("handle start task delay time");
         throw new AppError("Internal server Error while handle the start task delay time", error.message)
     }
 }
@@ -1463,9 +1585,13 @@ export const sendTaskFollowUp = async (taskIds: string[]): Promise<TaskResult> =
         let failedSends = 0;
         const sendAt = new Date();
 
-        const managerStats = new Map<
+        const managerFailures = new Map<
             string,
-            { manager: { name: string; number: string }; sent: number; userIds: Set<string> }
+            {
+                manager: { name: string; number: string };
+                failed: number;
+                users: Map<string, { name: string; number: string }>;
+            }
         >();
 
         for (const task of tasks) {
@@ -1492,52 +1618,53 @@ export const sendTaskFollowUp = async (taskIds: string[]): Promise<TaskResult> =
                     data: { sent: true, sendAt },
                 });
                 logger.info(`task-follow-up sent user =${task.user.number}`);
-
-                const mgr = task.user.parent;
-                if (mgr) {
-                    const stat = managerStats.get(mgr.id) ?? {
-                        manager: mgr,
-                        sent: 0,
-                        userIds: new Set<string>(),
-                    };
-                    stat.sent += 1;
-                    stat.userIds.add(task.user.id);
-                    managerStats.set(mgr.id, stat);
-                }
             } else {
                 failedSends += 1;
                 logger.warn(
                     `task-follow-up failed to user number=${task.user.number} detail=${result.message}`,
                 );
+
+                const mgr = task.user.parent;
+                if (mgr) {
+                    const stat = managerFailures.get(mgr.id) ?? {
+                        manager: mgr,
+                        failed: 0,
+                        users: new Map<string, { name: string; number: string }>(),
+                    };
+                    stat.failed += 1;
+                    stat.users.set(task.user.id, {
+                        name: task.user.name || "Unknown",
+                        number: task.user.number || "—",
+                    });
+                    managerFailures.set(mgr.id, stat);
+                }
             }
         }
 
         let managerSummarySent = false;
-        for (const { manager, sent: mgrSent, userIds } of managerStats.values()) {
-            if (mgrSent === 0) continue;
+        for (const { manager, failed, users } of managerFailures.values()) {
+            if (failed === 0) continue;
 
             const managerPhone = manager.number?.trim() ?? "";
             if (!managerPhone) continue;
 
-            const summaryBody = managerFollowUpSummaryMessage(
+            const failBody = managerFollowUpFailureMessage(
                 manager.name,
-                mgrSent,
-                mgrSent,
-                userIds.size,
-                0,
-                0,
-                failedSends,
+                failed,
+                [...users.values()],
             );
+
             const mgrResult = await sendMessageOnWhatsapp({
                 number: managerPhone,
-                message: summaryBody,
+                message: failBody,
             });
+
             if (mgrResult.success) {
                 managerSummarySent = true;
-                logger.info(`task follow-up manager summary sent managerId=${manager.number}`);
+                logger.info(`task follow-up failure alert sent manager=${manager.number}`);
             } else {
                 logger.warn(
-                    `task follow-up manager summary failed manager number=${manager.number} detail=${mgrResult.message}`,
+                    `task follow-up failure alert failed manager number=${manager.number} detail=${mgrResult.message}`,
                 );
             }
         }
@@ -1545,7 +1672,7 @@ export const sendTaskFollowUp = async (taskIds: string[]): Promise<TaskResult> =
         return {
             success: failedSends === 0 || sent > 0,
             status: sent === 0 && taskIds.length > 0 ? 502 : 200,
-            message: `Follow-up: ${sent} sent, ${skippedNoPhone} without phone, ${failedSends} failed (${taskIds.length} due task(s)). Manager summary: ${managerSummarySent ? "sent" : "not sent"}.`,
+            message: `Follow-up: ${sent} sent, ${skippedNoPhone} without phone, ${failedSends} failed (${taskIds.length} due task(s)). Manager alert: ${managerSummarySent ? "sent" : "not sent"}.`,
             sent,
             skippedNoPhone,
             skippedNoTasks: 0,
@@ -1554,6 +1681,7 @@ export const sendTaskFollowUp = async (taskIds: string[]): Promise<TaskResult> =
         };
     } catch (error) {
         logger.error("Error in Give follow-up : ", error);
+        await notifyAdminError("send follow-up task");
         throw new AppError(`Error in get Follow-up task : `, error.message);
     }
 };
@@ -1617,19 +1745,24 @@ export const handleFollowUp = async (taskId: string, whatsappFrom: string, ch: c
             return;
         }
 
-        if (choice === TaskStaus.completed) {
+        if (choice === TaskFinalStatus.completed) {
             await prisma.task.update({
                 where: { id: taskId },
-                data: { status: TaskStaus.completed },
+                data: { finaldecision: TaskFinalStatus.completed },
             });
             clearPendingFollowUp(user.id);
             await sendMessageOnWhatsapp({
                 number: user.number,
                 message: "Thank you! Task marked as done.",
             });
+
+            if (task.position > 1) {
+                await handlePreviousPendingTask(whatsappFrom, task.dailyTaskId, task.position)
+            }
         }
     } catch (error) {
         logger.error(`Error in handle Follow-up Task`, error);
+        await notifyAdminError("handle follow-up Task");
         throw new AppError(`Error in handle follow-up Task`, error.message);
     }
 };
@@ -1669,6 +1802,11 @@ export const handleFollowUpReply = async (whatsappFrom: string, text: string): P
         if (pending.step === "extraTime") {
             const saved = await handleExtratime(pending.taskId, phone, clean);
             if (saved) clearPendingFollowUp(user.id);
+
+            if (task.position > 1) {
+                await handlePreviousPendingTask(whatsappFrom, task.dailyTaskId, task.position)
+            }
+
             return saved;
         }
 
@@ -1677,11 +1815,17 @@ export const handleFollowUpReply = async (whatsappFrom: string, text: string): P
                 where: { id: pending.taskId },
                 data: { remarkReason: clean, status: TaskStaus.remark },
             });
+
             clearPendingFollowUp(user.id);
+
             await sendMessageOnWhatsapp({
                 number: phone,
                 message: "Thank you! Remark reason saved.",
             });
+
+            if (task.position > 1) {
+                await handlePreviousPendingTask(whatsappFrom, task.dailyTaskId, task.position)
+            }
 
             if (user.parentId) {
                 const manager = await prisma.user.findFirst({
@@ -1714,6 +1858,7 @@ export const handleFollowUpReply = async (whatsappFrom: string, text: string): P
         return false;
     } catch (error) {
         logger.error("Error in handle follow-up reply", error);
+        await notifyAdminError("handle follow-up reply");
         return false;
     }
 };
@@ -1858,6 +2003,7 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
         return true;
     } catch (error) {
         logger.error("Error in handle Extra time in task", error);
+        await notifyAdminError("handle Extra time in task");
         await sendMessageOnWhatsapp({
             number: from,
             message: "Could not save extra time. Please try again.",
@@ -1865,3 +2011,172 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
         return false;
     }
 };
+
+const handlePreviousPendingTask = async (from: string, dailyTaskId: string, taskPosition: number): Promise<boolean> => {
+    try {
+        const currentTime = new Date()
+
+        const tasks = await prisma.task.findMany({
+            where: {
+                dailyTaskId: dailyTaskId,
+                endAt: { lt: currentTime },
+                position: { lt: taskPosition },
+                status: { in: ["inProgress", "pending", "remark"] },
+                finaldecision: null,
+                deletedAt: null
+            },
+            select: {
+                id: true,
+                position: true,
+                name: true,
+                rawStartTime: true,
+                rawEndTime: true
+            },
+            orderBy: { position: "asc" },
+        })
+
+        if (tasks.length === 0) {
+            logger.info("No remaining previous task.")
+            return true
+        }
+
+        for (const t of tasks) {
+            await sendPreviousTaskFollowupButtons(from, t)
+        }
+
+        return true
+    } catch (error) {
+        logger.error("Error in find Previous-Task", error)
+        await notifyAdminError("function Previous pending Task")
+        return false
+    }
+}
+
+export const sendPreviousTaskHoldReminders = async (): Promise<TaskResult> => {
+    try {
+        const now = new Date()
+        const holdDueBefore = new Date(now.getTime() - PREVIOUS_TASK_HOLD_REMINDER_MS)
+
+        const tasks = await prisma.task.findMany({
+            where: {
+                deletedAt: null,
+                status: TaskStaus.hold,
+                finaldecision: null,
+                lasthold: { lte: holdDueBefore },
+                endAt: { lt: now },
+                dailyTask: {
+                    deletedAt: null,
+                    sent: true,
+                    status: AcceptStatus.accept,
+                    finaldecision: { in: ["onTrack", "remark"] },
+                },
+                user: { deletedAt: null },
+            },
+            select: {
+                id: true,
+                position: true,
+                name: true,
+                rawStartTime: true,
+                rawEndTime: true,
+                user: { select: { number: true } },
+            },
+        })
+
+        if (tasks.length === 0) {
+            return {
+                success: true,
+                status: 200,
+                message: "previous-task hold reminders: no tasks due.",
+                sent: 0,
+                skippedNoPhone: 0,
+                skippedNoTasks: 0,
+                failedSends: 0,
+                managerSummarySent: false,
+            }
+        }
+
+        let sent = 0
+        let skippedNoPhone = 0
+        let failedSends = 0
+
+        for (const task of tasks) {
+            const phone = task.user.number?.trim() ?? ""
+            if (!phone) {
+                skippedNoPhone += 1
+                continue
+            }
+
+            const success = await sendPreviousTaskFollowupButtons(phone, task)
+            if (success) {
+                sent += 1
+                await prisma.task.update({
+                    where: { id: task.id },
+                    data: { lasthold: now },
+                })
+            } else {
+                failedSends += 1
+            }
+        }
+
+        return {
+            success: failedSends === 0 || sent > 0,
+            status: sent === 0 && tasks.length > 0 ? 502 : 200,
+            message: `previous-task hold reminders: ${sent} sent, ${skippedNoPhone} without phone, ${failedSends} failed (${tasks.length} due task(s)).`,
+            sent,
+            skippedNoPhone,
+            skippedNoTasks: 0,
+            failedSends,
+            managerSummarySent: false,
+        }
+    } catch (error) {
+        logger.error("Error in send Previous Task hold reminders", error)
+        await notifyAdminError("send Previous Task hold reminders");
+        throw new AppError("Error in send Previous Task hold reminders", (error as Error).message)
+    }
+}
+
+export const handlePreviousTaskFollowupStatus = async (taskId: string, from: string, choice: finalchoice): Promise<boolean> => {
+    try {
+
+        const currentTime = new Date()
+        const user = await prisma.user.findFirst({ where: { number: from, deletedAt: null } })
+
+        if (!user) {
+            await sendMessageOnWhatsapp({ number: from, message: "user not Found , please contact Admin/Manager" })
+            return false
+        }
+
+        const task = await prisma.task.findFirst({ where: { id: taskId, status: { not: "deleted" } } })
+
+        if (!task) {
+            await sendMessageOnWhatsapp({ number: from, message: "Task Not Found !" })
+            return false
+        }
+
+        switch (choice) {
+            case "blocked":
+                await prisma.task.update({ where: { id: taskId }, data: { finaldecision: TaskFinalStatus.blocked } })
+                await sendMessageOnWhatsapp({ number: from, message: "Thanks for updating the status on your previous task." })
+                break
+
+            case "completed":
+                await prisma.task.update({ where: { id: taskId }, data: { finaldecision: TaskFinalStatus.completed } })
+                await sendMessageOnWhatsapp({ number: from, message: "Thanks for updating the status on your previous task." })
+                break
+
+            case "hold":
+                await prisma.task.update({ where: { id: taskId }, data: { status: TaskStaus.hold, lasthold: currentTime } })
+                await sendMessageOnWhatsapp({
+                    number: from,
+                    message: "Got it. We will ask you again in 2 hours.",
+                })
+                break
+        }
+
+        return true
+    } catch (error) {
+        logger.error("Error in Handle Previous task status", error)
+        await notifyAdminError("Handle Previous-Task status")
+        return false
+    }
+}

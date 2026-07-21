@@ -16,15 +16,15 @@ export const queryKeys = {
 } as const;
 
 export function invalidateDashboardQueries(queryClient: QueryClient) {
-  return queryClient.invalidateQueries({
+  return queryClient.refetchQueries({
     queryKey: queryKeys.dashboard.root,
-    refetchType: 'active',
+    type: 'active',
   });
 }
 
 export function invalidateAdminTasks(queryClient: QueryClient) {
-  return queryClient.invalidateQueries({
+  return queryClient.refetchQueries({
     queryKey: queryKeys.adminTasks,
-    refetchType: 'active',
+    type: 'active',
   });
 }

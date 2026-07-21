@@ -4,6 +4,7 @@ import {
     handleFinalDecisionRemarkReason,
     handleFollowUp,
     handleFollowUpReply,
+    handlePreviousTaskFollowupStatus,
     handleStartTaskDelayTime,
     handleStarttaskStatus,
     updateFinalDecision,
@@ -15,6 +16,8 @@ import { attendence } from "../attendence/service";
 import { prisma } from "../../libraries/db";
 import { sendMessageOnWhatsapp } from "../../domains/whtsapp/sendWhatsApp";
 import { touchConversation } from "../../domains/conversation/service";
+import { notifyDashboardUpdate } from "../../libraries/realtime";
+import { notifyAdminError } from "../../libraries/util/notifyAdminError";
 
 dotenv.config();
 
@@ -75,7 +78,7 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
     }
 
     if (type === "text" && isRecord(msg.text)) {
-        await touchConversation(user.id)
+        await touchConversation(user.id, from)
 
         const textBody = typeof msg.text.body === "string" ? msg.text.body.trim() : "";
         if (!textBody) return;
@@ -102,7 +105,7 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
 
     if (type === "location" && isRecord(msg.location)) {
 
-        await touchConversation(user.id)
+        await touchConversation(user.id, from)
 
         const latitude = parseCoordinate(msg.location.latitude);
         const longitude = parseCoordinate(msg.location.longitude);
@@ -118,6 +121,7 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
             await attendence(from, latitude, longitude);
         } catch (err) {
             logger.error(`webhook attendance failed from=${from}`, err);
+            await notifyAdminError("webhook attendance");
         }
         return;
     }
@@ -135,13 +139,13 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
     const [action, id] = buttonId.split("_")
     logger.info(`webhook incoming from=${from} message=${action}`);
 
-    await touchConversation(user.id)
+    await touchConversation(user.id, from)
 
     if (action === "accept" || action === "decline") {
         await updateTaskAcceptFromWhatsApp(id, from, action);
     }
 
-    if (action === "start" || action === "taskquery" || action ==="delay") {
+    if (action === "start" || action === "taskquery" || action === "delay") {
         await handleStarttaskStatus(id, from, action)
     }
 
@@ -151,6 +155,9 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
 
     if (action === "ontrack" || action === "no") {
         await updateFinalDecision(id, from, action)
+    }
+    if (action === "blocked" || action === "completed" || action==="hold") {
+        await handlePreviousTaskFollowupStatus(id, from, action)
     }
 }
 
@@ -178,5 +185,9 @@ export async function handleWebhook(body: unknown): Promise<void> {
                 await handleIncomingMessage(msg);
             }
         }
+    }
+
+    if (messageCount > 0) {
+        notifyDashboardUpdate();
     }
 }

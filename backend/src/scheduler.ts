@@ -4,19 +4,22 @@ import { prisma } from "./libraries/db";
 import {
     assignTask,
     finalDecisionDailyTask,
+    sendPreviousTaskHoldReminders,
     sendRemaingstatusTomanager,
     sendStartTask,
     sendTaskFollowUp,
 } from "./domains/Task/service";
-import { AcceptStatus, TaskStaus, onTrackStatus } from "@prisma/client";
+import { AcceptStatus, TaskFinalStatus, TaskStaus, onTrackStatus } from "@prisma/client";
 import { isTaskStartDueEarly, isTaskStartNow } from "./libraries/util/Task/timing";
 import {
     CRON_SETTING_NAMES,
     DEFAULT_REMAINING_STATUS_DELAY_MIN,
-    DEFAULT_START_TASK_EARLY_MIN,
+    DEFAULT_START_TASK_EARLY_MIN,                                                
     resolveCronSetting,
     resolveMinuteSetting,
 } from "./constants/cronSettings";
+import { notifyDashboardUpdate } from "./libraries/realtime";
+import { notifyAdminError } from "./libraries/util/notifyAdminError";
 
 let assignJob: CronJob | null = null;
 let followUpJob: CronJob | null = null;
@@ -26,7 +29,7 @@ let remainingStatusTimeout: NodeJS.Timeout | null = null;
 const DEFAULT_ASSIGN_TIME = "0 21 * * *";
 const DEFAULT_ONTRACK_TIME = "0 7 * * *";
 /** Every minute — follow-up sends only tasks whose startAt matches current time. */
-const FOLLOWUP_EVERY_MINUTE = "0/10 * * * *";
+const FOLLOWUP_EVERY_MINUTE = "* * * * *";
 
 type tastsendType = "early" | "onTime"
 
@@ -48,8 +51,10 @@ async function runRemainingStatusToManager() {
     try {
         const result = await sendRemaingstatusTomanager();
         logger.info(`cron remaining status done: ${result.message}`);
+        notifyDashboardUpdate();
     } catch (err) {
         logger.error("cron remaining status failed", err);
+        await notifyAdminError("cron remaining status to manager");
     }
 }
 
@@ -59,8 +64,10 @@ async function runAssignTaskForAll() {
         const result = await assignTask();
         logger.info(`cron assignTask done: ${result.message}`);
         scheduleRemainingStatusToManager();
+        notifyDashboardUpdate();
     } catch (err) {
         logger.error("cron assignTask failed", err);
+        await notifyAdminError("cron assign task");
     }
 }
 
@@ -69,8 +76,10 @@ async function runFinalDecisionForAll() {
     try {
         const result = await finalDecisionDailyTask();
         logger.info(`cron finalDecision done: ${result.message}`);
+        notifyDashboardUpdate();
     } catch (err) {
         logger.error("cron finalDecision failed", err);
+        await notifyAdminError("cron final decision daily task");
     }
 }
 
@@ -80,13 +89,14 @@ export async function getDueFollowUpTaskIds(managerId?: string): Promise<string[
         where: {
             deletedAt: null,
             OR: [
-                { status: { notIn: [TaskStaus.cancelled, TaskStaus.notSend, TaskStaus.deleted] } }
+                { status: { notIn: [TaskStaus.notSend, TaskStaus.deleted] } },
+                { finaldecision: { notIn: [TaskFinalStatus.cancelled, TaskFinalStatus.completed] } }
             ],
             dailyTask: {
                 deletedAt: null,
                 sent: true,
                 status: AcceptStatus.accept,
-                finaldecision: onTrackStatus.onTrack
+                finaldecision: { in: ["onTrack", "remark"] }
             },
             user: {
                 deletedAt: null,
@@ -104,16 +114,15 @@ export async function getDueStartTaskIds(type: tastsendType, managerId?: string)
     const tasks = await prisma.task.findMany({
         where: {
             deletedAt: null,
-            sent: false,
             OR: [
-                { status: { notIn: [TaskStaus.cancelled, TaskStaus.deleted] } },
-
+                { status: { notIn: [TaskStaus.deleted] } },
+                { finaldecision: { not: "cancelled" } }
             ],
             dailyTask: {
                 deletedAt: null,
                 sent: true,
                 status: AcceptStatus.accept,
-                finaldecision: onTrackStatus.onTrack
+                finaldecision: { in: ["onTrack", "remark"] }
             },
             user: {
                 deletedAt: null,
@@ -147,22 +156,22 @@ async function runFollowUpForAll() {
             const startEarlyResult = await sendStartTask(startEarlyTaskIds, "early");
             logger.info(`cron start early-task done: ${startEarlyResult.message}`);
 
-            const startOnTimeTaskIds = await getDueStartTaskIds("onTime");
-            const startOnTimeResult = await sendStartTask(startOnTimeTaskIds, "onTime");
-            logger.info(`cron start on-time task done: ${startOnTimeResult.message}`);
         }
 
-        else {
-            const startOnTimeTaskIds = await getDueStartTaskIds("onTime");
-            const startOnTimeResult = await sendStartTask(startOnTimeTaskIds, "simple");
-            logger.info(`cron start on-time with simple mode task done: ${startOnTimeResult.message}`);
-        }
+        const startOnTimeTaskIds = await getDueStartTaskIds("onTime");
+        const startOnTimeResult = await sendStartTask(startOnTimeTaskIds, "onTime");
+        logger.info(`cron start on-time with simple mode task done: ${startOnTimeResult.message}`);
 
         const followUpTaskIds = await getDueFollowUpTaskIds();
         const followUpResult = await sendTaskFollowUp(followUpTaskIds);
         logger.info(`cron followUp done: ${followUpResult.message}`);
+
+        const holdReminderResult = await sendPreviousTaskHoldReminders();
+        logger.info(`cron previous-task hold reminders done: ${holdReminderResult.message}`);
+        notifyDashboardUpdate();
     } catch (err) {
         logger.error("cron start/follow-up failed", err);
+        await notifyAdminError("cron start/follow-up");
     }
 }
 
@@ -199,6 +208,7 @@ export async function readCronjob() {
         startTaskEarlyMs = startEarlyMin * 60 * 1000;
     } catch (err) {
         logger.warn("cron Could not read cron from DB, using defaults", err);
+        await notifyAdminError("read cron settings from DB");
     }
 
     assignJob = new CronJob(assignTime, runAssignTaskForAll, null, true, "Asia/Kolkata");

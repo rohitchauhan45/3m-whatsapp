@@ -10,7 +10,6 @@ import {
     type UserStatusFilter,
     type TaskTableStatusFilter,
 } from "./service";
-import { TaskStaus } from "@prisma/client";
 
 const TIME_RANGES: timeRange[] = [
     "today",
@@ -34,9 +33,9 @@ function parseTaskStatusFilter(raw: unknown): TaskTableStatusFilter | undefined 
     if (typeof raw !== "string" || !raw.trim()) return undefined;
     const value = raw.trim().toLowerCase();
     if (value === "all") return "all";
-    if (value === "remark") return TaskStaus.remark;
-    if (value === "completed" || value === "complete") return TaskStaus.completed;
-    if (value === "cancelled") return TaskStaus.cancelled;
+    if (value === "remark") return "remark";
+    if (value === "completed" || value === "complete") return "completed";
+    if (value === "cancelled") return "cancelled";
     if (value === "delayed") return "delayed";
     if (value === "ontrack" || value === "inprogress") return "inprogress";
     if (value === "pending") return "pending";
