@@ -760,11 +760,7 @@ export default function AdminDashboard() {
                                     {showTaskStatusCol && (
                                       <td className="px-4 py-3">
                                         <TaskStatusBadge
-                                          status={
-                                            isAllFilter
-                                              ? getTaskDisplayStatus(task)
-                                              : task.status
-                                          }
+                                          status={getTaskDisplayStatus(task)}
                                           large
                                         />
                                       </td>

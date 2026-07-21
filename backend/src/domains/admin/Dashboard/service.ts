@@ -5,7 +5,7 @@ import logger from "../../../libraries/log/logger";
 import { convertTimeRangeintoDate } from "../../../libraries/util/Admin/timing";
 import { notifyAdminError } from "../../../libraries/util/notifyAdminError";
 
-export type timeRange = "today" | "yesterday" | "thisweek" | "lastweek" | "thismonth" | "lastmonth" | "thisyear"
+export type timeRange = "today" | "tomorrow" | "yesterday" | "thisweek" | "lastweek" | "thismonth" | "lastmonth" | "thisyear"
 
 interface PaginationResult {
     tasks: (Task & { date: Date })[];
@@ -26,7 +26,7 @@ export type TaskTableUserTask = {
     rawEndTime: string;
     startAt: Date;
     endAt: Date;
-    status: TaskStaus;
+    status: TaskStaus | TaskFinalStatus;
     finaldecision: TaskFinalStatus | null;
     remarkReason: string | null;
     howmuchComplete: string | null;
@@ -89,14 +89,15 @@ export const taskCardDetails = async (time: timeRange) => {
             prisma.task.count({
                 where: {
                     ...baseWhere,
+                    finaldecision: null,
                     status: { in: [TaskStaus.inProgress] },
                 },
             }),
             prisma.task.count({
-                where: { ...baseWhere, extratTme: { not: null, gt: 0 } },
+                where: { ...baseWhere, finaldecision: null, extratTme: { not: null, gt: 0 } },
             }),
             prisma.task.count({ where: { ...baseWhere, finaldecision: TaskFinalStatus.completed } }),
-            prisma.task.count({ where: { ...baseWhere, status: TaskStaus.remark } }),
+            prisma.task.count({ where: { ...baseWhere, finaldecision: null, status: TaskStaus.remark } }),
             prisma.task.count({ where: { ...baseWhere, finaldecision: TaskFinalStatus.cancelled } }),
             prisma.task.count({
                 where: {
@@ -141,12 +142,12 @@ function buildTaskTableStatusWhere(
     statusFilter: TaskTableStatusFilter,
 ): Prisma.TaskWhereInput {
     if (statusFilter === "all") return {};
-    if (statusFilter === "pending") return { status: TaskStaus.notSend };
-    if (statusFilter === "delayed") return { extratTme: { not: null, gt: 0 } };
+    if (statusFilter === "pending") return { finaldecision: null, status: TaskStaus.notSend };
+    if (statusFilter === "delayed") return { finaldecision: null, extratTme: { not: null, gt: 0 } };
     if (statusFilter === "inprogress") {
-        return { status: { in: [TaskStaus.inProgress] } };
+        return { finaldecision: null, status: { in: [TaskStaus.inProgress] } };
     }
-    if (statusFilter === "remark") return { status: TaskStaus.remark };
+    if (statusFilter === "remark") return { finaldecision: null, status: TaskStaus.remark };
     if (statusFilter === "completed") return { finaldecision: TaskFinalStatus.completed };
     if (statusFilter === "cancelled") return { finaldecision: TaskFinalStatus.cancelled };
     return {};
@@ -212,7 +213,7 @@ async function taskTableGroupedByUser(
             rawEndTime: taskRow.rawEndTime,
             startAt: taskRow.startAt,
             endAt: taskRow.endAt,
-            status: taskRow.status,
+            status: taskRow.finaldecision ?? taskRow.status,
             finaldecision: taskRow.finaldecision,
             remarkReason: taskRow.remarkReason ?? dailyTask.remarkReason,
             extratTme: taskRow.extratTme,

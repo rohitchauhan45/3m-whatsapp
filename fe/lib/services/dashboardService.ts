@@ -2,6 +2,7 @@ import { apiClient } from '@/lib/api/client';
 
 export type TimeRange =
   | 'today'
+  | 'tomorrow'
   | 'yesterday'
   | 'thisweek'
   | 'lastweek'
@@ -11,6 +12,7 @@ export type TimeRange =
 
 export const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
   { value: 'today', label: 'Today' },
+  { value: 'tomorrow', label: 'Tomorrow' },
   { value: 'yesterday', label: 'Yesterday' },
   { value: 'thisweek', label: 'This Week' },
   { value: 'lastweek', label: 'Last Week' },
@@ -139,9 +141,9 @@ const SHORT_MONTHS = [
   'Dec',
 ] as const;
 
-/** Show date column for multi-day ranges (not today / yesterday). */
+/** Show date column for multi-day ranges (not today / tomorrow / yesterday). */
 export function showsDateColumn(time: TimeRange): boolean {
-  return time !== 'today' && time !== 'yesterday';
+  return time !== 'today' && time !== 'tomorrow' && time !== 'yesterday';
 }
 
 /** e.g. 1Jan, 13May, 30June — calendar day as stored (UTC date parts). */

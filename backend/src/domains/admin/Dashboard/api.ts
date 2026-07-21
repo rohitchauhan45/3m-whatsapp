@@ -13,6 +13,7 @@ import {
 
 const TIME_RANGES: timeRange[] = [
     "today",
+    "tomorrow",
     "yesterday",
     "thisweek",
     "lastweek",

@@ -24,6 +24,13 @@ export const convertTimeRangeintoDate = (
             endDate = endOfCalendarDay(todayStart);
             break;
 
+        case "tomorrow": {
+            const tomorrow = addCalendarDays(todayStart, 1);
+            startDate = tomorrow;
+            endDate = endOfCalendarDay(tomorrow);
+            break;
+        }
+
         case "yesterday": {
             const yesterday = addCalendarDays(todayStart, -1);
             startDate = yesterday;
