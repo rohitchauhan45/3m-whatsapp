@@ -1,7 +1,7 @@
 import multer from "multer";
 import { NextFunction, Request, Response, Router } from "express";
 import { AppError } from "../../libraries/error-handling/AppError";
-import { assignTask, createTask, sendTaskFollowUp } from "./service";
+import { assignTask, createTask, createTaskFromImportRows, previewTaskImport, sendTaskFollowUp } from "./service";
 import { getDueFollowUpTaskIds } from "../../scheduler";
 import { authenticateToken, requireAdmin } from "../../middlewares/jwt";
 import { logRequest } from "../../middlewares/log";
@@ -64,10 +64,64 @@ export const routes = (): Router => {
     );
 
     router.post(
+        "/preview-task",
+        logRequest({}),
+        authenticateToken,
+        requireAdmin,
+        (req: Request, res: Response, next: NextFunction) => {
+            upload.any()(req, res, (err: unknown) => {
+                if (err) {
+                    const msg = err instanceof Error ? err.message : "Upload failed";
+                    next(new AppError("Upload error", msg, 400));
+                    return;
+                }
+                const file = pickExcelFile(req);
+                if (!file?.buffer?.length) {
+                    next(
+                        new AppError(
+                            "Upload error",
+                            'Send exactly one .xlsx file with multipart key "assignTask".',
+                            400
+                        )
+                    );
+                    return;
+                }
+                (req as Request & { assignTaskBuffer: Buffer }).assignTaskBuffer = file.buffer;
+                next();
+            });
+        },
+        async (req: Request, res: Response, next: NextFunction) => {
+            try {
+                const buffer = (req as Request & { assignTaskBuffer?: Buffer }).assignTaskBuffer;
+                if (!buffer) {
+                    next(new AppError("Upload error", "Missing upload buffer", 400));
+                    return;
+                }
+                const result = previewTaskImport(buffer);
+                return res.status(result.status).json(result);
+            } catch (error) {
+                next(error);
+            }
+        }
+    );
+
+    router.post(
         "/create-task",
         logRequest({}),
         authenticateToken,
         requireAdmin,
+        async (req: Request, res: Response, next: NextFunction) => {
+            try {
+                const body = req.body as { rows?: unknown };
+                if (Array.isArray(body.rows) && body.rows.length > 0) {
+                    const result = await createTaskFromImportRows(body.rows as Parameters<typeof createTaskFromImportRows>[0]);
+                    return res.status(result.status).json(result);
+                }
+                next();
+            } catch (error) {
+                next(error);
+            }
+        },
         (req: Request, res: Response, next: NextFunction) => {
             upload.any()(req, res, (err: unknown) => {
                 if (err) {

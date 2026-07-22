@@ -90,8 +90,8 @@ export default function Dropdown({
                 onClick={() => select(opt.value)}
                 className={`w-full text-left px-4 py-2.5 text-sm transition-colors duration-150 ${
                   isActive
-                    ? 'bg-brand-pastel-blue text-gray-900 font-semibold'
-                    : 'text-gray-700 font-normal hover:bg-gray-50'
+                    ? 'bg-brand-pastel-blue text-brand-primary font-semibold'
+                    : 'text-gray-700 font-normal hover:bg-gray-50 hover:text-brand-primary'
                 }`}
               >
                 {opt.label}

@@ -2,44 +2,15 @@
 
 import { usePathname } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { usePageHeader, type DashboardTab } from '@/lib/utils/page-header-context';
-
-const DASHBOARD_TABS: { id: DashboardTab; label: string }[] = [
-  { id: 'user', label: 'User' },
-  { id: 'task', label: 'Task' },
-  { id: 'setting', label: 'Setting' },
-];
+import { usePageHeader } from '@/lib/utils/page-header-context';
 
 export default function PageHeader() {
   const pathname = usePathname();
-  const { breadcrumb, onBack, showDashboardTabs, dashboardTab, setDashboardTab } = usePageHeader();
+  const { breadcrumb, onBack } = usePageHeader();
 
   const segments = pathname.split('/').filter(Boolean);
   const defaultBreadcrumb = segments.map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(' / ');
   const displayText = breadcrumb || defaultBreadcrumb;
-
-  if (showDashboardTabs) {
-    return (
-      <div className="flex items-center justify-center px-6 md:px-8 py-2 bg-white border-b border-gray-200 flex-shrink-0 rounded-xl w-full">
-        <div className="inline-flex bg-gray-100 rounded-full p-1.5 gap-1.5">
-          {DASHBOARD_TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setDashboardTab(t.id)}
-              className={`px-6 md:px-11 py-2 rounded-full text-[16px] font-semibold transition-all ${
-                dashboardTab === t.id
-                  ? 'bg-blue-500 text-white shadow-sm'
-                  : 'text-gray-700 hover:text-gray-900'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex items-center gap-3 px-6 md:px-8 py-4 bg-white border-b border-gray-200 flex-shrink-0 rounded-xl">

@@ -6,7 +6,7 @@ import { AppError } from "../../libraries/error-handling/AppError";
 import { convertUserTimeToMinutes, parseTimeOnDate, shiftRawTimeByMinutes } from "../../libraries/util/Task/timing";
 
 import { createUserWhatsApp } from "../auth/service";
-import { groupAssignTaskSheetRows, normalizeSheetDate, readAssignTaskExcelSheetRows, } from "../../libraries/util/Task/readfromxl";
+import { groupAssignTaskSheetRows, normalizeSheetDate, readAssignTaskExcelSheetRows, dedupeIdenticalTasks, type AssignTaskSheetGroup } from "../../libraries/util/Task/readfromxl";
 import { sendMessageOnWhatsapp, sendWhatsAppButtons, sendWhatsappTemplate } from "../whtsapp/sendWhatsApp";
 import {
     sendAssignTaskMessage,
@@ -76,6 +76,27 @@ export type CreateTaskResult = {
     status: number;
     message: string;
     processed: number;
+    failedRows: { row: number; reason: string }[];
+};
+
+export type TaskImportRow = {
+    startRow: number;
+    date: string;
+    name: string;
+    number: string;
+    email?: string;
+    managerName: string;
+    managerMobile: string;
+    taskName: string;
+    rawStartTime: string;
+    rawEndTime: string;
+};
+
+export type PreviewTaskResult = {
+    success: boolean;
+    status: number;
+    message: string;
+    rows: TaskImportRow[];
     failedRows: { row: number; reason: string }[];
 };
 
@@ -154,24 +175,116 @@ const clearPendingFollowUp = (userId: string): void => {
     pendingFollowUpByUserId.delete(userId);
 }
 
-/** Webhook calls this when user taps Accept or Decline on the task WhatsApp message. */
-export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
-    const failedRows: { row: number; reason: string }[] = [];
-    let processed = 0;
+function queueWelcomeMessage(number: string, name: string, label: string): void {
+    void sendWhatsappTemplate({
+        number,
+        tname: "welcome_3m",
+        parameters: [{ parameter_name: "user_name", text: name }],
+    })
+        .then((result) => {
+            if (result.success) {
+                logger.info(`createTask welcome sent to ${label} number=${number}`);
+            } else {
+                logger.warn(
+                    `createTask welcome failed for ${label} number=${number} detail=${result.message}`,
+                );
+            }
+        })
+        .catch((err) => {
+            logger.error(`createTask welcome error for ${label} number=${number}`, err);
+        });
+}
 
+function groupImportRows(flatRows: TaskImportRow[]): AssignTaskSheetGroup[] {
+    const map = new Map<string, AssignTaskSheetGroup>();
+
+    for (const row of flatRows) {
+        const key = `${row.number}|${row.date}|${row.managerMobile}|${row.name}`;
+        const task = {
+            name: row.taskName.trim(),
+            rawStartTime: row.rawStartTime.trim(),
+            rawEndTime: row.rawEndTime.trim(),
+        };
+        const existing = map.get(key);
+        if (existing) {
+            existing.tasks.push(task);
+            continue;
+        }
+        map.set(key, {
+            startRow: row.startRow,
+            name: row.name.trim(),
+            number: row.number.replace(/\D/g, ""),
+            email: row.email?.trim() ?? "",
+            dateRaw: row.date,
+            managerName: row.managerName.trim(),
+            managerMobile: row.managerMobile.replace(/\D/g, ""),
+            tasks: [task],
+        });
+    }
+
+    return Array.from(map.values()).map((group) => ({
+        ...group,
+        tasks: dedupeIdenticalTasks(group.tasks),
+    }));
+}
+
+export function previewTaskImport(buffer: Buffer): PreviewTaskResult {
     const sheetResult = readAssignTaskExcelSheetRows(buffer);
     if (sheetResult.ok === false) {
         return {
             success: false,
             status: sheetResult.status,
             message: sheetResult.message,
-            processed: 0,
+            rows: [],
             failedRows: [{ row: 1, reason: sheetResult.message }],
         };
     }
-    const sheet = sheetResult;
 
-    const groups = groupAssignTaskSheetRows(sheet.rows);
+    const groups = groupAssignTaskSheetRows(sheetResult.rows);
+    const rows: TaskImportRow[] = [];
+
+    for (const group of groups) {
+        const taskDate = normalizeSheetDate(group.dateRaw);
+        const dateLabel = taskDate ? formatCalendarDateLabel(taskDate) : "";
+
+        for (const task of group.tasks) {
+            rows.push({
+                startRow: group.startRow,
+                date: dateLabel,
+                name: group.name,
+                number: group.number,
+                email: group.email.trim() ? group.email : undefined,
+                managerName: group.managerName,
+                managerMobile: group.managerMobile,
+                taskName: task.name,
+                rawStartTime: task.rawStartTime,
+                rawEndTime: task.rawEndTime,
+            });
+        }
+    }
+
+    if (rows.length === 0) {
+        return {
+            success: false,
+            status: 400,
+            message: "No tasks found in file",
+            rows: [],
+            failedRows: [{ row: 1, reason: "No tasks found in file" }],
+        };
+    }
+
+    return {
+        success: true,
+        status: 200,
+        message: `Found ${rows.length} task row(s). Review and click Create.`,
+        rows,
+        failedRows: [],
+    };
+}
+
+async function importTaskGroups(groups: AssignTaskSheetGroup[]): Promise<CreateTaskResult> {
+    const failedRows: { row: number; reason: string }[] = [];
+    let processed = 0;
     const welcomedManagers = new Set<string>();
 
     for (const g of groups) {
@@ -216,7 +329,6 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
         const storeManagerNumber = toStoredIndianWhatsAppNumber(data.managerMobile);
         let isNewUser = false;
         let isNewManager = false;
-        let count = 0
 
         try {
             await prisma.$transaction(async (tx) => {
@@ -253,7 +365,6 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
                 let userId: string;
 
                 if (existingUser) {
-                    console.log("No need to send welcome msg")
                     userId = existingUser.id;
                     await tx.user.update({
                         where: { id: existingUser.id },
@@ -261,7 +372,6 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
                     });
                 } else {
                     isNewUser = true;
-                    count++
                     const created = await createUserWhatsApp({
                         name: data.name,
                         number: storeUserNumber,
@@ -319,41 +429,18 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
                         },
                     });
                 }
-            })
+            });
 
             if (isNewManager && !welcomedManagers.has(storeManagerNumber)) {
                 welcomedManagers.add(storeManagerNumber);
-                const managerWelcomeResult = await sendWhatsappTemplate({
-                    number: storeManagerNumber,
-                    tname: "welcome_3m",
-                    parameters: [{ parameter_name: "user_name", text: data.managerName }],
-                });
-                if (managerWelcomeResult.success) {
-                    logger.info(`createTask welcome sent to new manager number=${storeManagerNumber}`);
-                } else {
-                    logger.warn(
-                        `createTask welcome failed for new manager number=${storeManagerNumber} detail=${managerWelcomeResult.message}`,
-                    );
-                }
+                queueWelcomeMessage(storeManagerNumber, data.managerName, "new manager");
             }
 
             if (isNewUser) {
-                const welcomeResult = await sendWhatsappTemplate({
-                    number: storeUserNumber,
-                    tname: "welcome_3m",
-                    parameters: [{ parameter_name: "user_name", text: data.name }],
-                });
-                if (welcomeResult.success) {
-                    logger.info(`createTask welcome sent to new user number=${storeUserNumber}`);
-                } else {
-                    logger.warn(
-                        `createTask welcome failed for new user number=${storeUserNumber} detail=${welcomeResult.message}`,
-                    );
-                }
+                queueWelcomeMessage(storeUserNumber, data.name, "new user");
             }
 
-            processed += 1
-
+            processed += 1;
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             logger.error(`createTask import failed at sheet row ${g.startRow}`, { name: g.name, error: msg });
@@ -362,7 +449,6 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
     }
 
     const allOk = failedRows.length === 0;
-    console.log("new users : ", count)
     return {
         success: allOk,
         status: allOk ? 200 : processed > 0 ? 200 : 400,
@@ -372,6 +458,34 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
         processed,
         failedRows,
     };
+}
+
+export async function createTaskFromImportRows(rows: TaskImportRow[]): Promise<CreateTaskResult> {
+    if (rows.length === 0) {
+        return {
+            success: false,
+            status: 400,
+            message: "No rows to import",
+            processed: 0,
+            failedRows: [{ row: 0, reason: "No rows to import" }],
+        };
+    }
+    return importTaskGroups(groupImportRows(rows));
+}
+
+/** Webhook calls this when user taps Accept or Decline on the task WhatsApp message. */
+export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
+    const preview = previewTaskImport(buffer);
+    if (!preview.success) {
+        return {
+            success: false,
+            status: preview.status,
+            message: preview.message,
+            processed: 0,
+            failedRows: preview.failedRows,
+        };
+    }
+    return createTaskFromImportRows(preview.rows);
 }
 
 export const assignTask = async (managerId?: string): Promise<TaskResult> => {

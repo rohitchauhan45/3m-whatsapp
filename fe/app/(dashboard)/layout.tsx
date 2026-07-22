@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Settings, Menu, Users, ArrowRight, X, LogOut, ChevronsLeft, ChevronsRight, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Settings, Menu, Users, ArrowRight, X, LogOut, ChevronsLeft, ChevronsRight, ClipboardList, UserRound } from 'lucide-react';
 import { useAuth, isAdmin } from '@/lib/utils/auth';
+import { ui } from '@/lib/utils/ui-classes';
 import PageHeader from '@/components/layout/PageHeader';
 import { PageHeaderProvider } from '@/lib/utils/page-header-context';
 
@@ -27,13 +28,11 @@ export default function DashboardLayout({
         href={path}
         onClick={() => setIsMobileMenuOpen(false)}
         className={`w-full flex items-center justify-start px-3 py-3 rounded-xl transition-all duration-200 group ${
-          isActive
-            ? 'bg-gray-100 text-gray-900 font-semibold shadow-sm'
-            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-        } ${collapsed ? 'md:px-2 md:py-2.5' : 'md:px-4'} border border-transparent`}
+          isActive ? ui.navActive : ui.navInactive
+        } ${collapsed ? 'md:px-2 md:py-2.5' : 'md:px-4'}`}
       >
         <div className={`flex items-center ${collapsed ? 'justify-center w-full' : 'space-x-3'}`}>
-          <Icon size={20} className={`${isActive ? 'text-gray-900' : 'text-gray-400 group-hover:text-gray-900'} transition-colors`} />
+          <Icon size={20} className={`${isActive ? 'text-brand-primary' : 'text-gray-400 group-hover:text-brand-primary'} transition-colors`} />
           {showLabel && <span className="text-[14px]">{label}</span>}
         </div>
       </Link>
@@ -113,8 +112,12 @@ export default function DashboardLayout({
               {!isCollapsed && <div className="px-3 pt-2 text-[11px] font-semibold text-gray-400 tracking-[0.2em]">GENERAL</div>}
               <div className="space-y-1">
                 <NavItem path="/dashboard" icon={LayoutDashboard} label="Dashboard" collapsed={isCollapsed} />
-                <NavItem path="/tasks" icon={ClipboardList} label="Tasks" collapsed={isCollapsed} />
-                
+                {isAdmin(user) && (
+                  <NavItem path="/user" icon={UserRound} label="User" collapsed={isCollapsed} />
+                )}
+                {isAdmin(user) && (
+                  <NavItem path="/tasks" icon={ClipboardList} label="Task" collapsed={isCollapsed} />
+                )}
                 {isAdmin(user) && (
                   <NavItem path="/users" icon={Users} label="User Management" collapsed={isCollapsed} />
                 )}

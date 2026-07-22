@@ -142,6 +142,32 @@ export type AssignTaskSheetGroup = {
     managerMobile: string;
 };
 
+type SheetTaskRow = { name: string; rawStartTime: string; rawEndTime: string };
+
+function identicalTaskKey(task: SheetTaskRow): string {
+    return `${task.name.trim().toLowerCase()}|${task.rawStartTime.trim().toLowerCase()}|${task.rawEndTime.trim().toLowerCase()}`;
+}
+
+/** Keeps the first row when task name, start, and end are all the same. */
+export function dedupeIdenticalTasks<T extends SheetTaskRow>(tasks: T[]): T[] {
+    const seen = new Set<string>();
+    const result: T[] = [];
+    for (const task of tasks) {
+        const key = identicalTaskKey(task);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(task);
+    }
+    return result;
+}
+
+function finalizeAssignTaskGroup(group: AssignTaskSheetGroup | null): AssignTaskSheetGroup | null {
+    if (!group) return null;
+    const tasks = dedupeIdenticalTasks(group.tasks);
+    if (tasks.length === 0) return null;
+    return { ...group, tasks };
+}
+
 /** Normalized keys allowed in assignTask.xlsx (no aliases like `names` or `username`). */
 const ALLOWED_HEADER_KEYS = new Set([
     "date",
@@ -226,9 +252,8 @@ export function groupAssignTaskSheetRows(rows: Record<string, unknown>[]): Assig
         }
 
         if (rowIsBlank(rows[i])) {
-            if (current && current.tasks.length > 0) {
-                groups.push(current);
-            }
+            const finalized = finalizeAssignTaskGroup(current);
+            if (finalized) groups.push(finalized);
             current = null;
             continue;
         }
@@ -247,9 +272,8 @@ export function groupAssignTaskSheetRows(rows: Record<string, unknown>[]): Assig
         const hasAnchor = name.length > 0 && number.length > 0;
 
         if (hasAnchor) {
-            if (current && current.tasks.length > 0) {
-                groups.push(current);
-            }
+            const finalized = finalizeAssignTaskGroup(current);
+            if (finalized) groups.push(finalized);
             current = {
                 startRow: i + 2,
                 name,
@@ -265,9 +289,8 @@ export function groupAssignTaskSheetRows(rows: Record<string, unknown>[]): Assig
         }
     }
 
-    if (current && current.tasks.length > 0) {
-        groups.push(current);
-    }
+    const finalized = finalizeAssignTaskGroup(current);
+    if (finalized) groups.push(finalized);
 
     return groups;
 }

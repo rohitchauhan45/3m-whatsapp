@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, Fragment } from 'react';
+import { useEffect, useState, Fragment } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
   CheckCircle2,
@@ -9,6 +10,7 @@ import {
   Eye,
   Loader2,
   MessageSquare,
+  Plus,
   Search,
   Users,
   UserCheck,
@@ -16,7 +18,6 @@ import {
   CalendarCheck,
   Activity,
 } from 'lucide-react';
-import { usePageHeader } from '@/lib/utils/page-header-context';
 import Modal, { ModalDetailGrid, ModalDetailRow } from '@/components/ui/Modal';
 import Dropdown from '@/components/ui/Dropdown';
 import {
@@ -37,13 +38,13 @@ import {
 } from '@/lib/services/dashboardService';
 import { queryKeys } from '@/lib/query-keys';
 import { cachedQueryOptions } from '@/lib/query-config';
-import ScheduleSettings from './ScheduleSettings';
 import {
   getOnTrackStatusClassName,
   getSentClassName,
   getTaskStatusClassName,
   getUserStatusClassName,
 } from '@/lib/utils/status-styles';
+import { ui } from '@/lib/utils/ui-classes';
 
 const TRUNCATE_LENGTH_DEFAULT = 40;
 const TRUNCATE_LENGTH_LARGE = 100;
@@ -211,6 +212,7 @@ function TableFilters({
   timeRange,
   onTimeRangeChange,
   leftSlot,
+  rightSlot,
 }: {
   searchValue: string;
   onSearchChange: (value: string) => void;
@@ -218,11 +220,13 @@ function TableFilters({
   timeRange: TimeRange;
   onTimeRangeChange: (value: TimeRange) => void;
   leftSlot?: React.ReactNode;
+  rightSlot?: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
       <div>{leftSlot}</div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
+      {rightSlot}
       <div className="relative w-full sm:w-64">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input
@@ -277,7 +281,7 @@ function TaskStatusFilterBar({
   onChange: (value: TaskStatusFilter) => void;
 }) {
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 p-1.5 overflow-x-auto">
+    <div className={ui.tabBar}>
       {TASK_STATUS_FILTER_OPTIONS.map((option) => {
         const active = value === option.value;
         return (
@@ -285,11 +289,7 @@ function TaskStatusFilterBar({
             key={option.value}
             type="button"
             onClick={() => onChange(option.value)}
-            className={`px-4 py-2 rounded-full text-[14px] font-semibold whitespace-nowrap transition-all ${
-              active
-                ? 'bg-blue-500 text-white shadow-sm'
-                : 'text-gray-700 hover:text-gray-900'
-            }`}
+            className={active ? ui.tabActive : ui.tabInactive}
           >
             {option.label}
           </button>
@@ -307,7 +307,7 @@ function UserStatusFilterBar({
   onChange: (value: UserStatusFilter) => void;
 }) {
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 p-1.5 overflow-x-auto">
+    <div className={ui.tabBar}>
       {USER_STATUS_FILTER_OPTIONS.map((option) => {
         const active = value === option.value;
         return (
@@ -315,11 +315,7 @@ function UserStatusFilterBar({
             key={option.value}
             type="button"
             onClick={() => onChange(option.value)}
-            className={`px-4 py-2 rounded-full text-[14px] font-semibold whitespace-nowrap transition-all ${
-              active
-                ? 'bg-blue-500 text-white shadow-sm'
-                : 'text-gray-700 hover:text-gray-900'
-            }`}
+            className={active ? ui.tabActive : ui.tabInactive}
           >
             {option.label}
           </button>
@@ -451,52 +447,42 @@ function PaginationBar({
   );
 }
 
-export default function AdminDashboard() {
-  const { setShowDashboardTabs, dashboardTab: tab, setDashboardTab } = usePageHeader();
+type AdminDashboardTab = 'user' | 'task';
+
+type AdminDashboardProps = {
+  tab: AdminDashboardTab;
+  initialSearch?: string;
+  onAddTask?: () => void;
+};
+
+export default function AdminDashboard({ tab, initialSearch = '', onAddTask }: AdminDashboardProps) {
+  const router = useRouter();
   const [taskTimeRange, setTaskTimeRange] = useState<TimeRange>('today');
   const [userTimeRange, setUserTimeRange] = useState<TimeRange>('today');
-  const [search, setSearch] = useState('');
-  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState(initialSearch);
+  const [searchInput, setSearchInput] = useState(initialSearch);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [taskDetailModal, setTaskDetailModal] = useState<TaskDetailModalData | null>(null);
   const [userDetailModal, setUserDetailModal] = useState<DashboardDailyTask | null>(null);
-  const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatusFilter>('remark');
+  const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatusFilter>(
+    initialSearch ? 'all' : 'remark',
+  );
   const [userStatusFilter, setUserStatusFilter] = useState<UserStatusFilter>('remaining');
-  const prevTabRef = useRef(tab);
-  const pendingUserTaskSearchRef = useRef<string | null>(null);
   const truncateLength = useTruncateLength();
 
   const goToUserTasks = (userName: string, userNumber: string) => {
     const term = userName.trim() || userNumber.trim();
-    pendingUserTaskSearchRef.current = term;
-    setTaskTimeRange(userTimeRange);
-    setTaskStatusFilter('all');
-    setDashboardTab('task');
+    router.push(`/tasks?search=${encodeURIComponent(term)}`);
   };
 
   useEffect(() => {
-    setShowDashboardTabs(true);
-    return () => {
-      setShowDashboardTabs(false);
-      setDashboardTab('user');
-    };
-  }, [setShowDashboardTabs, setDashboardTab]);
-
-  useEffect(() => {
-    if (prevTabRef.current !== tab) {
-      const pending = pendingUserTaskSearchRef.current;
-      if (pending !== null) {
-        setSearchInput(pending);
-        setSearch(pending);
-        pendingUserTaskSearchRef.current = null;
-      } else {
-        setSearch('');
-        setSearchInput('');
-      }
-      prevTabRef.current = tab;
+    setSearchInput(initialSearch);
+    setSearch(initialSearch);
+    if (initialSearch) {
+      setTaskStatusFilter('all');
     }
-  }, [tab]);
+  }, [initialSearch]);
 
   useEffect(() => {
     const timer = setTimeout(() => setSearch(searchInput.trim()), 300);
@@ -618,47 +604,62 @@ export default function AdminDashboard() {
       <div className="flex-1 flex flex-col min-h-0">
           {/* TASK TAB */}
           {tab === 'task' && (
-            <div className="space-y-12 flex flex-col flex-1 min-h-0">
-              {taskCardsQuery.data && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-                  <StatCard
-                    title="Remark"
-                    value={taskCardsQuery.data.remarkTask}
-                    icon={MessageSquare}
-                    iconColor="text-amber-600"
-                  />
-                  <StatCard
-                    title="Delayed"
-                    value={taskCardsQuery.data.delayedTask}
-                    icon={Clock}
-                    iconColor="text-orange-600"
-                  />
-                  <StatCard
-                    title="Cancelled"
-                    value={taskCardsQuery.data.cancelledTask}
-                    icon={UserX}
-                    iconColor="text-red-600"
-                  />
-                  <StatCard
-                    title="In Progress"
-                    value={taskCardsQuery.data.inProgress}
-                    icon={Activity}
-                    iconColor="text-blue-600"
-                  />
-                  <StatCard
-                    title="Complete"
-                    value={taskCardsQuery.data.complete}
-                    icon={CheckCircle2}
-                    iconColor="text-green-600"
-                  />
-                  <StatCard
-                    title="All"
-                    value={taskCardsQuery.data.totalTask}
-                    icon={ClipboardList}
-                    iconColor="text-purple-600"
-                  />
-                </div>
-              )}
+            <div className="space-y-6 flex flex-col flex-1 min-h-0">
+              <div className="space-y-5">
+                {taskCardsQuery.data && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                    <StatCard
+                      title="Remark"
+                      value={taskCardsQuery.data.remarkTask}
+                      icon={MessageSquare}
+                      iconColor="text-amber-600"
+                    />
+                    <StatCard
+                      title="Delayed"
+                      value={taskCardsQuery.data.delayedTask}
+                      icon={Clock}
+                      iconColor="text-orange-600"
+                    />
+                    <StatCard
+                      title="Cancelled"
+                      value={taskCardsQuery.data.cancelledTask}
+                      icon={UserX}
+                      iconColor="text-red-600"
+                    />
+                    <StatCard
+                      title="In Progress"
+                      value={taskCardsQuery.data.inProgress}
+                      icon={Activity}
+                      iconColor="text-brand-primary"
+                    />
+                    <StatCard
+                      title="Complete"
+                      value={taskCardsQuery.data.complete}
+                      icon={CheckCircle2}
+                      iconColor="text-green-600"
+                    />
+                    <StatCard
+                      title="All"
+                      value={taskCardsQuery.data.totalTask}
+                      icon={ClipboardList}
+                      iconColor="text-purple-600"
+                    />
+                  </div>
+                )}
+
+                {onAddTask && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={onAddTask}
+                      className={ui.btnPrimary}
+                    >
+                      <Plus size={16} />
+                      Add Task
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <div className="flex flex-col flex-1 min-h-0">
                 <TableFilters
@@ -872,7 +873,7 @@ export default function AdminDashboard() {
                     title="Attended"
                     value={userCardsQuery.data.attented}
                     icon={CalendarCheck}
-                    iconColor="text-blue-600"
+                    iconColor="text-brand-primary"
                   />
                   <StatCard
                     title="Total Users"
@@ -994,7 +995,7 @@ export default function AdminDashboard() {
                                     onClick={() =>
                                       goToUserTasks(dt.user?.name || '', dt.user?.number || '')
                                     }
-                                    className="text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+                                    className={ui.linkPrimary}
                                   >
                                     Task
                                   </button>
@@ -1041,13 +1042,6 @@ export default function AdminDashboard() {
                   </>
                 )}
               </div>
-            </div>
-          )}
-
-          {/* SETTING TAB */}
-          {tab === 'setting' && (
-            <div className="w-full max-w-5xl mx-auto">
-              <ScheduleSettings />
             </div>
           )}
       </div>
