@@ -22,7 +22,6 @@ import { normalizeChoiceforTaskfollowUp, normlizeChiocestartChoice, normlizeChoi
 import { finalDecisionMessage } from "../../domains/messages/ontrack";
 import { morningAbsentResontoManager, morningRemarkResontoManager } from "../messages/morningOntrack";
 import { delayinprogressTaskMessagetoManager, delaystartTaskMessagetoManager } from "../messages/delayedTask";
-import { count } from "console";
 import { resolveTaskPositions } from "../../libraries/util/Task/position";
 import { previousTaskmsg } from "../../domains/messages/previousTask";
 import {
@@ -2122,6 +2121,69 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
             number: from,
             message: "Could not save extra time. Please try again.",
         });
+        return false;
+    }
+};
+
+export const handlePendigTaskUpdateText = async (from: string) => {
+    try {
+        const user = await prisma.user.findFirst({
+            where: {
+                number: from,
+                role: Role.user,
+            },
+        });
+
+        if (!user) {
+            await sendMessageOnWhatsapp({
+                number: from,
+                message: "User not Found Please contact your Manager",
+            });
+            return false;
+        }
+
+        const currentTime = new Date();
+        const todayDate = getISTTodayCalendarDate();
+
+        const tasks = await prisma.task.findMany({
+            where: {
+                userId: user.id,
+                dailyTask: {
+                    date: todayDate,
+                    deletedAt: null,
+                },
+                endAt: { lt: currentTime },
+                status: { in: ["inProgress", "pending", "remark"] },
+                finaldecision: null,
+                deletedAt: null,
+            },
+            select: {
+                id: true,
+                position: true,
+                name: true,
+                rawStartTime: true,
+                rawEndTime: true,
+            },
+            orderBy: { position: "asc" },
+        });
+
+        if (tasks.length === 0) {
+            logger.info(`No remaining previous task for user=${from}`);
+            await sendMessageOnWhatsapp({
+                number: from,
+                message: "✔️ No pending previous tasks to update.",
+            });
+            return true;
+        }
+
+        for (const t of tasks) {
+            await sendPreviousTaskFollowupButtons(from, t);
+        }
+
+        return true;
+    } catch (error) {
+        logger.error("Error while user text UPDATE ", error);
+        await notifyAdminError("while user text UPDATE");
         return false;
     }
 };

@@ -31,7 +31,6 @@ export type ManagerTasksResult = {
     }[];
 };
 
-
 export const getAllTasksByDate = async () => {
     try {
         const tasks = await prisma.task.findMany({

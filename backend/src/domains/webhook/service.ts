@@ -4,6 +4,7 @@ import {
     handleFinalDecisionRemarkReason,
     handleFollowUp,
     handleFollowUpReply,
+    handlePendigTaskUpdateText,
     handlePreviousTaskFollowupStatus,
     handleStartTaskDelayTime,
     handleStarttaskStatus,
@@ -85,6 +86,11 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
 
         logger.info(`incoming msg from = ${from} message = ${textBody}`);
 
+        if (textBody.toLowerCase() === "update") {
+            await handlePendigTaskUpdateText(from);
+            return;
+        }
+        
         const declineSaved = await handleDeclineReason(from, textBody);
         if (declineSaved) return;
 
@@ -156,7 +162,7 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
     if (action === "ontrack" || action === "no") {
         await updateFinalDecision(id, from, action)
     }
-    if (action === "blocked" || action === "completed" || action==="hold") {
+    if (action === "blocked" || action === "completed" || action === "hold") {
         await handlePreviousTaskFollowupStatus(id, from, action)
     }
 }
