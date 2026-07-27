@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: 3m-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend/.env:/app/.env:ro
+    ports:
+      - "127.0.0.1:4001:4001"
+
+  frontend:
+    build:
+      context: ./fe
+      args:
+        NEXT_PUBLIC_AUTH_SERVER_URL: ${NEXT_PUBLIC_AUTH_SERVER_URL}
+    container_name: 3m-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4200:4200"
+    depends_on:
+      - backend
