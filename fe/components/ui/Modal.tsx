@@ -14,6 +14,8 @@ export interface ModalProps {
   description?: string;
   footer?: ReactNode;
   size?: ModalSize;
+  closeButtonClassName?: string;
+  headerRight?: ReactNode;
 }
 
 const sizeClasses: Record<ModalSize, string> = {
@@ -32,6 +34,8 @@ export default function Modal({
   children,
   footer,
   size = 'md',
+  closeButtonClassName,
+  headerRight,
 }: ModalProps) {
   useEffect(() => {
     if (!open) return;
@@ -77,14 +81,21 @@ export default function Modal({
               <p className="mt-1.5 text-sm leading-relaxed text-gray-600">{description}</p>
             ) : null}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 rounded-full border border-gray-200 bg-white p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
-            aria-label="Close"
-          >
-            <X size={18} />
-          </button>
+          {headerRight != null ? (
+            <div className="shrink-0">{headerRight}</div>
+          ) : (
+            <button
+              type="button"
+              onClick={onClose}
+              className={
+                closeButtonClassName ??
+                'shrink-0 rounded-full border border-gray-200 bg-white p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700'
+              }
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">{children}</div>

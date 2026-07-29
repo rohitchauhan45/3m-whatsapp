@@ -77,6 +77,8 @@ export interface TaskTableUserGroup {
   userId: string;
   name: string;
   number: string;
+  managerName: string;
+  managerMobile: string;
   tasks: TaskTableUserTask[];
 }
 

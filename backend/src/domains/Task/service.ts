@@ -1,4 +1,4 @@
-import { AcceptStatus, DelayType, Provider, Role, TaskStaus, TaskFinalStatus, onTrackStatus } from "@prisma/client";
+import { AcceptStatus, DelayType, Prisma, Provider, Role, TaskStaus, TaskFinalStatus, onTrackStatus } from "@prisma/client";
 import { prisma } from "../../libraries/db";
 import logger from "../../libraries/log/logger";
 import { excelAssignRowSchema, formatExcelRowZodError } from "./request";
@@ -76,6 +76,27 @@ export type CreateTaskResult = {
     message: string;
     processed: number;
     failedRows: { row: number; reason: string }[];
+};
+
+export type EditTask = {
+    name?: string;
+    start?: string;
+    end?: string;
+};
+
+export type EditTaskResult = {
+    success: boolean;
+    status: number;
+    message?: string;
+    error?: string;
+    data?: {
+        id: string;
+        name: string;
+        rawStartTime: string;
+        rawEndTime: string;
+        startAt: Date;
+        endAt: Date;
+    };
 };
 
 export type TaskImportRow = {
@@ -472,7 +493,6 @@ export async function createTaskFromImportRows(rows: TaskImportRow[]): Promise<C
     return importTaskGroups(groupImportRows(rows));
 }
 
-/** Webhook calls this when user taps Accept or Decline on the task WhatsApp message. */
 export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
     const preview = previewTaskImport(buffer);
     if (!preview.success) {
@@ -486,6 +506,145 @@ export async function createTask(buffer: Buffer): Promise<CreateTaskResult> {
     }
     return createTaskFromImportRows(preview.rows);
 }
+
+// export const isEditableTask ... (removed — editability checked inside editTask)
+
+export const editTask = async (
+    taskId: string,
+    data: EditTask,
+    adminId: string,
+): Promise<EditTaskResult> => {
+    try {
+        const task = await prisma.task.findFirst({
+            where: { id: taskId, deletedAt: null },
+            select: {
+                startAt: true,
+                endAt: true,
+                rawStartTime: true,
+                rawEndTime: true,
+                dailyTask: {
+                    select: {
+                        date: true,
+                    },
+                },
+            },
+        });
+
+        if (!task) {
+            return {
+                success: false,
+                status: 404,
+                error: "Task Not Found !",
+            };
+        }
+
+        const currentTime = new Date();
+
+        if (task.startAt <= currentTime) {
+            return {
+                success: false,
+                status: 400,
+                error: "You cannot edit the Past Task !",
+            };
+        }
+
+        const taskDate = task.dailyTask.date;
+        const updateData: Prisma.TaskUpdateInput = {};
+
+        let nextStartAt = task.startAt;
+        let nextEndAt = task.endAt;
+
+        if (data.start) {
+            const startTime = parseTimeOnDate(taskDate, data.start);
+            if (!startTime) {
+                return {
+                    success: false,
+                    status: 400,
+                    error: "Invalid start time format",
+                };
+            }
+            if (startTime <= currentTime) {
+                return {
+                    success: false,
+                    status: 400,
+                    error: "Start time cannot be in the past",
+                };
+            }
+            updateData.rawStartTime = data.start.trim();
+            updateData.startAt = startTime;
+            nextStartAt = startTime;
+        }
+
+        if (data.end) {
+            const endTime = parseTimeOnDate(taskDate, data.end);
+            if (!endTime) {
+                return {
+                    success: false,
+                    status: 400,
+                    error: "Invalid end time format",
+                };
+            }
+            if (endTime <= currentTime) {
+                return {
+                    success: false,
+                    status: 400,
+                    error: "End time cannot be in the past",
+                };
+            }
+            updateData.rawEndTime = data.end.trim();
+            updateData.endAt = endTime;
+            nextEndAt = endTime;
+        }
+
+        if (nextEndAt <= nextStartAt) {
+            return {
+                success: false,
+                status: 400,
+                error: "End time must be after start time",
+            };
+        }
+
+        if (data.name?.trim()) {
+            updateData.name = data.name.trim();
+        }
+
+        if (Object.keys(updateData).length === 0) {
+            return {
+                success: false,
+                status: 400,
+                error: "No fields to update",
+            };
+        }
+
+        const updatedTask = await prisma.task.update({
+            where: { id: taskId },
+            data: { ...updateData, updateById: adminId },
+            select: {
+                id: true,
+                name: true,
+                rawStartTime: true,
+                rawEndTime: true,
+                startAt: true,
+                endAt: true,
+            },
+        });
+
+        return {
+            success: true,
+            status: 200,
+            message: "Task updated successfully",
+            data: updatedTask,
+        };
+    } catch (error) {
+        logger.error("Error while update the task ", error);
+        await notifyAdminError("Edit task");
+        return {
+            success: false,
+            status: 500,
+            error: "Failed to update task",
+        };
+    }
+};
 
 export const assignTask = async (managerId?: string): Promise<TaskResult> => {
     try {

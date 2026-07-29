@@ -1,11 +1,13 @@
 {
   "compilerOptions": {
     "target": "ES2019",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+
+    "types": ["node"],
     "outDir": "dist",
     "rootDir": ".",
-    "baseUrl": "src",
+
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
@@ -13,7 +15,6 @@
     "strict": false,
     "noImplicitAny": false
   },
-  "include": ["src/**/*", "scripts/**/*"],
+  "include": ["src/**/*", "scripts/**/*", "prisma/**/*"],
   "exclude": ["node_modules", "dist"]
 }
-

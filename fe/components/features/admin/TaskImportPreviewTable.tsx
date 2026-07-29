@@ -33,11 +33,11 @@ function groupPreviewRows(rows: PreviewRow[]): PreviewGroup[] {
   return Array.from(map.values());
 }
 
-function editableFieldClass(extra = '') {
+export function editableFieldClass(extra = '') {
   return `${ui.inputEditable} ${extra}`.trim();
 }
 
-function createEmptyTaskForGroup(name: string, number: string): PreviewRow {
+export function createEmptyTaskForGroup(name: string, number: string): PreviewRow {
   return {
     id: `new-${crypto.randomUUID()}`,
     name,

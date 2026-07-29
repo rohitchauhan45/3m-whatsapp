@@ -1,9 +1,10 @@
 import multer from "multer";
 import { NextFunction, Request, Response, Router } from "express";
 import { AppError } from "../../libraries/error-handling/AppError";
-import { assignTask, createTask, createTaskFromImportRows, previewTaskImport, sendTaskFollowUp } from "./service";
+import { assignTask, createTask, createTaskFromImportRows, editTask, previewTaskImport, sendTaskFollowUp } from "./service";
+import { editTaskSchema } from "./request";
 import { getDueFollowUpTaskIds } from "../../scheduler";
-import { authenticateToken, requireAdmin } from "../../middlewares/jwt";
+import { authenticateToken, AuthRequest, requireAdmin } from "../../middlewares/jwt";
 import { logRequest } from "../../middlewares/log";
 import { getManagerTasks } from "../admin/service";
 
@@ -157,6 +158,42 @@ export const routes = (): Router => {
                 next(error);
             }
         }
+    );
+
+    router.post(
+        "/update/:taskId",
+        logRequest({}),
+        authenticateToken,
+        requireAdmin,
+        async (req: AuthRequest, res: Response, next: NextFunction) => {
+            try {
+                const raw = req.params.taskId;
+                const id = (Array.isArray(raw) ? raw[0] : raw)?.trim();
+                if (!id) {
+                    next(new AppError("Validation Error", "Task id is Required", 400));
+                    return;
+                }
+
+                const parsed = editTaskSchema.safeParse(req.body?.data ?? req.body);
+                if (!parsed.success) {
+                    next(
+                        new AppError(
+                            "Validation Error",
+                            parsed.error.issues.map((i) => i.message).join("; "),
+                            400,
+                        ),
+                    );
+                    return;
+                }
+
+                const userId = req.user.userId;
+                const result = await editTask(id, parsed.data, userId);
+
+                return res.status(result.status).json(result);
+            } catch (error) {
+                next(error);
+            }
+        },
     );
 
     router.post(

@@ -22,7 +22,7 @@ async function seedUsers() {
           emailVerified: true,
           password: adminPassword,
           name: "Rohit chauhan",
-          number: "917698489305",
+          number: "917698489306",
           role: "admin",
           provider: "local",
         },

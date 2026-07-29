@@ -240,3 +240,29 @@ export async function sendFollowUp(managerId: string): Promise<FollowUpResponse>
   );
   return data;
 }
+
+export interface EditTaskPayload {
+  name?: string;
+  start?: string;
+  end?: string;
+}
+
+export interface EditTaskResponse {
+  success: boolean;
+  status: number;
+  message?: string;
+  error?: string;
+}
+
+export async function editTask(taskId: string, payload: EditTaskPayload): Promise<EditTaskResponse> {
+  const res = await apiClient.post(`/task/update/${taskId}`, { data: payload }, {
+    validateStatus: () => true,
+  });
+  const data = res.data as EditTaskResponse;
+  return {
+    success: data.success,
+    status: data.status ?? res.status,
+    message: data.message,
+    error: data.error,
+  };
+}

@@ -42,6 +42,8 @@ export type TaskTableUserGroup = {
     userId: string;
     name: string;
     number: string;
+    managerName: string;
+    managerMobile: string;
     tasks: TaskTableUserTask[];
 };
 
@@ -196,7 +198,14 @@ async function taskTableGroupedByUser(
         where,
         orderBy: [{ user: { name: "asc" } }, { startAt: "asc" }],
         include: {
-            user: { select: { id: true, name: true, number: true } },
+            user: {
+                select: {
+                    id: true,
+                    name: true,
+                    number: true,
+                    parent: { select: { name: true, number: true } },
+                },
+            },
             dailyTask: { select: { date: true, remarkReason: true } },
         },
     });
@@ -232,6 +241,8 @@ async function taskTableGroupedByUser(
                 userId: taskRow.userId,
                 name: user.name,
                 number: user.number,
+                managerName: user.parent?.name ?? "",
+                managerMobile: user.parent?.number ?? "",
                 tasks: [taskItem],
             });
         }

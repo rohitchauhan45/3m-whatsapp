@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Loader2, Upload, CheckCircle2, XCircle, FileCheck } from 'lucide-react';
+import { Loader2, Upload, CheckCircle2, XCircle, FileCheck, UserPlus } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth, isAdmin } from '@/lib/utils/auth';
 import { useToast } from '@/lib/providers/toast-provider';
@@ -17,7 +17,11 @@ import {
   enrichPreviewRowsForCreate,
   formatUploadErrorMessage,
 } from '@/lib/services/taskService';
-import { validatePreviewRows } from '@/lib/utils/taskImportValidation';
+import AddUserTaskModal from '@/components/features/admin/AddUserTaskModal';
+import {
+  getSharedPreviewDate,
+  validatePreviewRows,
+} from '@/lib/utils/taskImportValidation';
 import { ui } from '@/lib/utils/ui-classes';
 import {
   invalidateAdminTasks,
@@ -36,6 +40,7 @@ function TasksPageContent() {
   const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
   const { showError } = useToast();
   const [dragOver, setDragOver] = useState(false);
+  const [addUserOpen, setAddUserOpen] = useState(false);
 
   const previewMutation = useMutation({
     mutationFn: previewTaskFile,
@@ -158,7 +163,15 @@ function TasksPageContent() {
       <div className="animate-fade-in space-y-6">
         <TaskImportPreviewTable rows={previewRows} onChange={setPreviewRows} />
 
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => setAddUserOpen(true)}
+            className={ui.btnPrimary}
+          >
+            <UserPlus size={16} />
+            Add User
+          </button>
           <button
             type="button"
             disabled={createMutation.isPending || previewRows.length === 0}
@@ -168,6 +181,17 @@ function TasksPageContent() {
             {createMutation.isPending ? 'Creating...' : 'Create'}
           </button>
         </div>
+
+        <AddUserTaskModal
+          open={addUserOpen}
+          onClose={() => setAddUserOpen(false)}
+          defaultDate={getSharedPreviewDate(previewRows)}
+          submitLabel="Add to list"
+          onSubmit={(rows) => {
+            setPreviewRows((prev) => [...prev, ...rows]);
+            setAddUserOpen(false);
+          }}
+        />
       </div>
     );
   }

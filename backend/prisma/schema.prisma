@@ -153,6 +153,8 @@ model Task {
   //normal details for dashbboard
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
+  updateById       String?
+
   deletedAt        DateTime?      
 
   //relation

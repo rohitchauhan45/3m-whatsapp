@@ -42,6 +42,18 @@ export const excelAssignRowSchema = z.object({
 
 export type ExcelAssignRow = z.infer<typeof excelAssignRowSchema>;
 
+export const editTaskSchema = z
+    .object({
+        name: z.string().trim().min(1, "task name is required").optional(),
+        start: z.string().trim().min(1, "start time is required").optional(),
+        end: z.string().trim().min(1, "end time is required").optional(),
+    })
+    .refine((data) => data.name || data.start || data.end, {
+        message: "At least one of name, start, or end is required",
+    });
+
+export type EditTaskInput = z.infer<typeof editTaskSchema>;
+
 export function formatExcelRowZodError(error: z.ZodError): string {
     return error.issues
         .map((iss) => {

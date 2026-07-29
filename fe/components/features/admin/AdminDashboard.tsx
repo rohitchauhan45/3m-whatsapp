@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2,
   ClipboardList,
@@ -10,6 +10,7 @@ import {
   Eye,
   Loader2,
   MessageSquare,
+  Pencil,
   Plus,
   Search,
   Users,
@@ -17,9 +18,19 @@ import {
   UserX,
   CalendarCheck,
   Activity,
+  UserPlus,
 } from 'lucide-react';
+import AddUserTaskModal from '@/components/features/admin/AddUserTaskModal';
 import Modal, { ModalDetailGrid, ModalDetailRow } from '@/components/ui/Modal';
 import Dropdown from '@/components/ui/Dropdown';
+import {
+  createTasksFromPreview,
+  enrichPreviewRowsForCreate,
+  formatUploadErrorMessage,
+  type TaskPreviewRow,
+} from '@/lib/services/taskService';
+import { validatePreviewRows } from '@/lib/utils/taskImportValidation';
+import { invalidateAdminTasks, invalidateDashboardQueries, queryKeys } from '@/lib/query-keys';
 import {
   TIME_RANGE_OPTIONS,
   type TimeRange,
@@ -36,8 +47,9 @@ import {
   showsDateColumn,
   type PaginationMeta,
 } from '@/lib/services/dashboardService';
-import { queryKeys } from '@/lib/query-keys';
+import { editTask } from '@/lib/services/taskService';
 import { cachedQueryOptions } from '@/lib/query-config';
+import { useToast } from '@/lib/providers/toast-provider';
 import {
   getOnTrackStatusClassName,
   getSentClassName,
@@ -163,6 +175,41 @@ function shouldShowRowEye(data: TaskDetailModalData, maxLength: number) {
   );
 }
 
+function isTaskEditable(startAt: string): boolean {
+  const start = new Date(startAt);
+  return !Number.isNaN(start.getTime()) && start.getTime() > Date.now();
+}
+
+type TaskAddForm = {
+  userName: string;
+  userNumber: string;
+  dateLabel: string;
+  date: string;
+  managerName: string;
+  managerMobile: string;
+  name: string;
+  start: string;
+  end: string;
+};
+
+type TaskEditForm = {
+  taskId: string;
+  userName: string;
+  dateLabel: string;
+  name: string;
+  start: string;
+  end: string;
+};
+
+function formatDayMonthYear(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const year = d.getUTCFullYear();
+  return `${day}-${month}-${year}`;
+}
+
 function buildFilterTaskDetailModal(
   group: TaskTableUserGroup,
   task: TaskTableUserTask,
@@ -226,22 +273,22 @@ function TableFilters({
     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
       <div>{leftSlot}</div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
-      {rightSlot}
-      <div className="relative w-full sm:w-64">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input
-          value={searchValue}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder={searchPlaceholder}
-          className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-brand-primary/20 bg-white"
+        {rightSlot}
+        <div className="relative w-full sm:w-64">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={searchValue}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-brand-primary/20 bg-white"
+          />
+        </div>
+        <Dropdown
+          value={timeRange}
+          onChange={(v) => onTimeRangeChange(v as TimeRange)}
+          options={TIME_RANGE_OPTIONS}
+          align="right"
         />
-      </div>
-      <Dropdown
-        value={timeRange}
-        onChange={(v) => onTimeRangeChange(v as TimeRange)}
-        options={TIME_RANGE_OPTIONS}
-        align="right"
-      />
       </div>
     </div>
   );
@@ -457,6 +504,8 @@ type AdminDashboardProps = {
 
 export default function AdminDashboard({ tab, initialSearch = '', onAddTask }: AdminDashboardProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { showToast, showError } = useToast();
   const [taskTimeRange, setTaskTimeRange] = useState<TimeRange>('today');
   const [userTimeRange, setUserTimeRange] = useState<TimeRange>('today');
   const [search, setSearch] = useState(initialSearch);
@@ -464,12 +513,107 @@ export default function AdminDashboard({ tab, initialSearch = '', onAddTask }: A
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [taskDetailModal, setTaskDetailModal] = useState<TaskDetailModalData | null>(null);
+  const [taskEditForm, setTaskEditForm] = useState<TaskEditForm | null>(null);
+  const [addTaskForm, setAddTaskForm] = useState<TaskAddForm | null>(null);
+  const [addUserOpen, setAddUserOpen] = useState(false);
   const [userDetailModal, setUserDetailModal] = useState<DashboardDailyTask | null>(null);
   const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatusFilter>(
     initialSearch ? 'all' : 'remark',
   );
   const [userStatusFilter, setUserStatusFilter] = useState<UserStatusFilter>('remaining');
   const truncateLength = useTruncateLength();
+
+  const createTaskMutation = useMutation({
+    mutationFn: createTasksFromPreview,
+    onSuccess: (res) => {
+      if (!res.success) {
+        showError(formatUploadErrorMessage(res));
+        return;
+      }
+      invalidateAdminTasks(queryClient);
+      invalidateDashboardQueries(queryClient);
+      setAddTaskForm(null);
+      setAddUserOpen(false);
+      showToast(res.message || 'Task created', 'success');
+    },
+    onError: (err: Error) => showError(err.message),
+  });
+
+  const editTaskMutation = useMutation({
+    mutationFn: (form: TaskEditForm) =>
+      editTask(form.taskId, {
+        name: form.name.trim(),
+        start: form.start.trim(),
+        end: form.end.trim(),
+      }),
+    onSuccess: (res) => {
+      if (!res.success) {
+        showError(res.error || res.message || 'Failed to update task');
+        return;
+      }
+      invalidateDashboardQueries(queryClient);
+      setTaskEditForm(null);
+      showToast(res.message || 'Task updated', 'success');
+    },
+    onError: () => {
+      showError('Failed to update task');
+    },
+  });
+
+  const openTaskEditModal = (group: TaskTableUserGroup, task: TaskTableUserTask) => {
+    setTaskEditForm({
+      taskId: task.id,
+      userName: group.name,
+      dateLabel: formatDayMonthYear(task.date),
+      name: task.name,
+      start: task.rawStartTime,
+      end: task.rawEndTime,
+    });
+  };
+
+  const openAddTaskModal = (group: TaskTableUserGroup) => {
+    const dateLabel = group.tasks[0]?.date ? formatDayMonthYear(group.tasks[0].date) : '';
+    setAddTaskForm({
+      userName: group.name,
+      userNumber: group.number,
+      dateLabel,
+      date: dateLabel,
+      managerName: group.managerName,
+      managerMobile: group.managerMobile,
+      name: '',
+      start: '',
+      end: '',
+    });
+  };
+
+  const handleCreateAddTask = () => {
+    if (!addTaskForm) return;
+
+    const previewRow = {
+      id: 'new-modal',
+      name: addTaskForm.userName,
+      number: addTaskForm.userNumber,
+      taskName: addTaskForm.name.trim(),
+      rawStartTime: addTaskForm.start.trim(),
+      rawEndTime: addTaskForm.end.trim(),
+      date: addTaskForm.date,
+      managerName: addTaskForm.managerName,
+      managerMobile: addTaskForm.managerMobile,
+      startRow: 0,
+    };
+
+    const validation = validatePreviewRows([previewRow]);
+    if (!validation.valid) {
+      showError(validation.errors.join('\n'));
+      return;
+    }
+
+    createTaskMutation.mutate(enrichPreviewRowsForCreate([previewRow]));
+  };
+
+  const handleCreateAddUser = (rows: TaskPreviewRow[]) => {
+    createTaskMutation.mutate(enrichPreviewRowsForCreate(rows));
+  };
 
   const goToUserTasks = (userName: string, userNumber: string) => {
     const term = userName.trim() || userNumber.trim();
@@ -567,10 +711,12 @@ export default function AdminDashboard({ tab, initialSearch = '', onAddTask }: A
   const showTaskDateColInTable = !isAllFilter && showTaskDateCol;
   const taskReasonWidth = isRemarkFilter ? '34%' : '24%';
 
+  const taskTrailingColCount = 1;
+
   const taskGroupedColSpan =
-    5 +
+    4 +
+    taskTrailingColCount +
     (showTaskDateColInTable ? 1 : 0) +
-    (showTaskStatusCol ? 1 : 0) +
     (showExtraTimeCol ? 1 : 0) +
     (showHowMuchCompleteCol ? 1 : 0) +
     (showTaskReasonCol ? 1 : 0) +
@@ -602,354 +748,395 @@ export default function AdminDashboard({ tab, initialSearch = '', onAddTask }: A
   return (
     <div className="animate-fade-in min-h-[calc(100dvh-11rem)] flex flex-col w-full">
       <div className="flex-1 flex flex-col min-h-0">
-          {/* TASK TAB */}
-          {tab === 'task' && (
-            <div className="space-y-6 flex flex-col flex-1 min-h-0">
-              <div className="space-y-5">
-                {taskCardsQuery.data && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-                    <StatCard
-                      title="Remark"
-                      value={taskCardsQuery.data.remarkTask}
-                      icon={MessageSquare}
-                      iconColor="text-amber-600"
-                    />
-                    <StatCard
-                      title="Delayed"
-                      value={taskCardsQuery.data.delayedTask}
-                      icon={Clock}
-                      iconColor="text-orange-600"
-                    />
-                    <StatCard
-                      title="Cancelled"
-                      value={taskCardsQuery.data.cancelledTask}
-                      icon={UserX}
-                      iconColor="text-red-600"
-                    />
-                    <StatCard
-                      title="In Progress"
-                      value={taskCardsQuery.data.inProgress}
-                      icon={Activity}
-                      iconColor="text-brand-primary"
-                    />
-                    <StatCard
-                      title="Complete"
-                      value={taskCardsQuery.data.complete}
-                      icon={CheckCircle2}
-                      iconColor="text-green-600"
-                    />
-                    <StatCard
-                      title="All"
-                      value={taskCardsQuery.data.totalTask}
-                      icon={ClipboardList}
-                      iconColor="text-purple-600"
-                    />
-                  </div>
-                )}
-
-                {onAddTask && (
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={onAddTask}
-                      className={ui.btnPrimary}
-                    >
-                      <Plus size={16} />
-                      Add Task
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-col flex-1 min-h-0">
-                <TableFilters
-                  searchValue={searchInput}
-                  onSearchChange={setSearchInput}
-                  searchPlaceholder="Search tasks..."
-                  timeRange={taskTimeRange}
-                  onTimeRangeChange={setTaskTimeRange}
-                  leftSlot={
-                    <TaskStatusFilterBar value={taskStatusFilter} onChange={setTaskStatusFilter} />
-                  }
-                />
-
-                {isLoading ? (
-                  <div className="flex justify-center py-16">
-                    <Loader2 className="animate-spin text-gray-400" size={28} />
-                  </div>
-                ) : (
-                  <>
-                    <DataTableShell>
-                      <table className="w-full text-base table-fixed">
-                        <colgroup>
-                          <col style={{ width: isAllFilter ? '16%' : '18%' }} />
-                          <col
-                            style={{
-                              width: isAllFilter ? '28%' : isRemarkFilter ? '22%' : '28%',
-                            }}
-                          />
-                          {showTaskDateColInTable && <col style={{ width: '8%' }} />}
-                          <col style={{ width: isAllFilter ? '12%' : '9%' }} />
-                          <col style={{ width: isAllFilter ? '12%' : '9%' }} />
-                          {showTaskStatusCol && <col style={{ width: isAllFilter ? '12%' : '10%' }} />}
-                          {showExtraTimeCol && <col style={{ width: '10%' }} />}
-                          {showHowMuchCompleteCol && <col style={{ width: '12%' }} />}
-                          {showTaskReasonCol && <col style={{ width: taskReasonWidth }} />}
-                          {showCompletedAtCol && <col style={{ width: '12%' }} />}
-                          <col style={{ width: isAllFilter ? '6%' : '5%' }} />
-                        </colgroup>
-                        <thead>
-                          <tr className="bg-gray-50 text-left text-sm uppercase tracking-wide text-gray-500">
-                            <th className="px-4 py-3">User</th>
-                            <th className="px-4 py-3">Task</th>
-                            {showTaskDateColInTable && <th className="px-4 py-3">Date</th>}
-                            <th className="px-4 py-3">Start</th>
-                            <th className="px-4 py-3">End</th>
-                            {showTaskStatusCol && <th className="px-4 py-3">Status</th>}
-                            {showExtraTimeCol && <th className="px-4 py-3">Extra Time</th>}
-                            {showHowMuchCompleteCol && (
-                              <th className="px-4 py-3">How Much Complete</th>
-                            )}
-                            {showTaskReasonCol && <th className="px-4 py-3">Reason</th>}
-                            {showCompletedAtCol && <th className="px-4 py-3">Completed At</th>}
-                            <th className="px-2 py-3" aria-label="View details" />
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {groupedUsers.map((group, groupIndex) => (
-                            <Fragment key={group.userId}>
-                              {group.tasks.map((task, taskIndex) => {
-                                const detailData = isAllFilter
-                                  ? buildAllTaskDetailModal(group, task)
-                                  : buildFilterTaskDetailModal(group, task);
-                                const showEye = isAllFilter
-                                  ? true
-                                  : !isPendingFilter && shouldShowRowEye(detailData, truncateLength);
-
-                                return (
-                                  <tr
-                                    key={task.id}
-                                    className={`border-t border-gray-100 hover:bg-gray-50/50 ${
-                                      taskIndex === group.tasks.length - 1
-                                        ? 'border-b-[6px] border-b-gray-100'
-                                        : ''
-                                    }`}
-                                  >
-                                    {taskIndex === 0 && (
-                                      <td
-                                        rowSpan={group.tasks.length}
-                                        className="px-4 py-3 align-top border-r border-gray-100 bg-gray-50/40"
-                                      >
-                                        <div className="font-medium text-gray-900">
-                                          <TruncatedText text={group.name} maxLength={truncateLength} />
-                                        </div>
-                                        <div className="text-sm text-gray-500 mt-1">
-                                          <TruncatedText text={group.number} maxLength={truncateLength} />
-                                        </div>
-                                      </td>
-                                    )}
-                                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                                      <TruncatedText text={task.name} maxLength={truncateLength} />
-                                    </td>
-                                    {showTaskDateColInTable && (
-                                      <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                                        {task.date ? formatShortDisplayDate(task.date) : '—'}
-                                      </td>
-                                    )}
-                                    <td className="px-4 py-3 text-gray-700">{task.rawStartTime}</td>
-                                    <td className="px-4 py-3 text-gray-700">{task.rawEndTime}</td>
-                                    {showTaskStatusCol && (
-                                      <td className="px-4 py-3">
-                                        <TaskStatusBadge
-                                          status={getTaskDisplayStatus(task)}
-                                          large
-                                        />
-                                      </td>
-                                    )}
-                                    {showExtraTimeCol && (
-                                      <td className="px-4 py-3 text-gray-700">
-                                        {formatExtraTime(task.extratTme)}
-                                      </td>
-                                    )}
-                                    {showHowMuchCompleteCol && (
-                                      <td className="px-4 py-3 text-gray-700">
-                                        <TruncatedText text={task.howmuchComplete} maxLength={truncateLength} />
-                                      </td>
-                                    )}
-                                    {showTaskReasonCol && (
-                                      <td className="px-4 py-3 text-gray-600">
-                                        {isCancelledFilter ? (
-                                          <TruncatedText text="user decline, for more info see in user tab" maxLength={truncateLength} />
-                                        ) : (
-                                          <TruncatedText text={task.remarkReason} maxLength={truncateLength} />
-                                        )}
-                                      </td>
-                                    )}
-                                    {showCompletedAtCol && (
-                                      <td className="px-4 py-3 text-gray-400">—</td>
-                                    )}
-                                    <td className="px-2 py-3 text-center align-middle">
-                                      {showEye && (
-                                        <button
-                                          type="button"
-                                          onClick={() => setTaskDetailModal(detailData)}
-                                          className="text-brand-primary hover:text-brand-primaryDark transition-colors"
-                                          aria-label={
-                                            isAllFilter
-                                              ? 'View full task details'
-                                              : 'View full details'
-                                          }
-                                        >
-                                          <Eye size={18} />
-                                        </button>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                              {groupIndex < groupedUsers.length - 1 && (
-                                <tr aria-hidden="true">
-                                  <td
-                                    colSpan={taskGroupedColSpan}
-                                    className="h-4 p-0 bg-gray-50/80 border-0"
-                                  />
-                                </tr>
-                              )}
-                            </Fragment>
-                          ))}
-                          {!groupedUsers.length && (
-                            <tr>
-                              <td
-                                colSpan={taskGroupedColSpan}
-                                className={`${EMPTY_ROW_HEIGHT} align-middle text-center text-gray-400`}
-                              >
-                                No tasks for this period
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </DataTableShell>
-                    {taskTableQuery.data?.pagination && (
-                      <PaginationBar
-                        pagination={taskTableQuery.data.pagination}
-                        onPageChange={setPage}
-                        onLimitChange={(l) => {
-                          setLimit(l);
-                          setPage(1);
-                        }}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* USER TAB */}
-          {tab === 'user' && (
-            <div className="space-y-12 flex flex-col flex-1 min-h-0">
-              {userCardsQuery.data && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        {/* TASK TAB */}
+        {tab === 'task' && (
+          <div className="space-y-6 flex flex-col flex-1 min-h-0">
+            <div className="space-y-5">
+              {taskCardsQuery.data && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
                   <StatCard
-                    title="Accepted"
-                    value={userCardsQuery.data.accept}
-                    icon={UserCheck}
-                    iconColor="text-green-600"
+                    title="Remark"
+                    value={taskCardsQuery.data.remarkTask}
+                    icon={MessageSquare}
+                    iconColor="text-amber-600"
                   />
                   <StatCard
-                    title="Declined"
-                    value={userCardsQuery.data.decline}
+                    title="Delayed"
+                    value={taskCardsQuery.data.delayedTask}
+                    icon={Clock}
+                    iconColor="text-orange-600"
+                  />
+                  <StatCard
+                    title="Cancelled"
+                    value={taskCardsQuery.data.cancelledTask}
                     icon={UserX}
                     iconColor="text-red-600"
                   />
                   <StatCard
-                    title="Remaining"
-                    value={userCardsQuery.data.remaining}
-                    icon={Clock}
-                    iconColor="text-amber-600"
-                  />
-                  <StatCard
-                    title="Attended"
-                    value={userCardsQuery.data.attented}
-                    icon={CalendarCheck}
+                    title="In Progress"
+                    value={taskCardsQuery.data.inProgress}
+                    icon={Activity}
                     iconColor="text-brand-primary"
                   />
                   <StatCard
-                    title="Total Users"
-                    value={userCardsQuery.data.totaluser}
-                    icon={Users}
+                    title="Complete"
+                    value={taskCardsQuery.data.complete}
+                    icon={CheckCircle2}
+                    iconColor="text-green-600"
+                  />
+                  <StatCard
+                    title="All"
+                    value={taskCardsQuery.data.totalTask}
+                    icon={ClipboardList}
                     iconColor="text-purple-600"
                   />
                 </div>
               )}
 
-              <div className="flex flex-col flex-1 min-h-0">
-                <TableFilters
-                  searchValue={searchInput}
-                  onSearchChange={setSearchInput}
-                  searchPlaceholder="Search by name or number..."
-                  timeRange={userTimeRange}
-                  onTimeRangeChange={setUserTimeRange}
-                  leftSlot={
-                    <UserStatusFilterBar value={userStatusFilter} onChange={setUserStatusFilter} />
-                  }
-                />
+              {onAddTask && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={onAddTask}
+                    className={ui.btnPrimary}
+                  >
+                    <Plus size={16} />
+                    Add Task
+                  </button>
+                </div>
+              )}
+            </div>
 
-                {isLoading ? (
-                  <div className="flex justify-center py-16">
-                    <Loader2 className="animate-spin text-gray-400" size={28} />
-                  </div>
-                ) : (
-                  <>
-                    <DataTableShell>
-                      <table className="w-full text-base table-fixed">
-                        <colgroup>
-                          {isUserAllFilter ? (
-                            <>
-                              <col style={{ width: '22%' }} />
-                              <col style={{ width: '18%' }} />
-                              <col style={{ width: '14%' }} />
-                              <col style={{ width: '12%' }} />
-                              <col style={{ width: '10%' }} />
-                              <col style={{ width: '6%' }} />
-                            </>
-                          ) : (
-                            <>
-                              <col style={{ width: '18%' }} />
-                              <col style={{ width: '14%' }} />
-                              {showUserDateColInTable && <col style={{ width: '8%' }} />}
-                              {showUserStatusCol && <col style={{ width: '12%' }} />}
-                              {showUserOnTrackCol && <col style={{ width: '12%' }} />}
-                              {showUserReasonCol && <col style={{ width: userReasonWidth }} />}
-                              {showUserSentCol && <col style={{ width: '8%' }} />}
-                            </>
+            <div className="flex flex-col flex-1 min-h-0">
+              <TableFilters
+                searchValue={searchInput}
+                onSearchChange={setSearchInput}
+                searchPlaceholder="Search tasks..."
+                timeRange={taskTimeRange}
+                onTimeRangeChange={setTaskTimeRange}
+                leftSlot={
+                  <TaskStatusFilterBar value={taskStatusFilter} onChange={setTaskStatusFilter} />
+                }
+              />
+
+              {isLoading ? (
+                <div className="flex justify-center py-16">
+                  <Loader2 className="animate-spin text-gray-400" size={28} />
+                </div>
+              ) : (
+                <>
+                  <DataTableShell>
+                    <table className="w-full text-base table-fixed">
+                      <colgroup>
+                        <col style={{ width: isAllFilter ? '14%' : '16%' }} />
+                        <col
+                          style={{
+                            width: isAllFilter ? '36%' : isRemarkFilter ? '32%' : '42%',
+                          }}
+                        />
+                        {showTaskDateColInTable && <col style={{ width: '8%' }} />}
+                        <col style={{ width: '11%' }} />
+                        <col style={{ width: '11%' }} />
+                        {showExtraTimeCol && <col style={{ width: '10%' }} />}
+                        {showHowMuchCompleteCol && <col style={{ width: '12%' }} />}
+                        {showTaskReasonCol && <col style={{ width: taskReasonWidth }} />}
+                        {showCompletedAtCol && <col style={{ width: '12%' }} />}
+                        <col style={{ width: '12%' }} />
+                      </colgroup>
+                      <thead>
+                        <tr className="bg-gray-50 text-left text-sm uppercase tracking-wide text-gray-500">
+                          <th className="px-4 py-3">User</th>
+                          <th className="px-4 py-3">Task</th>
+                          {showTaskDateColInTable && <th className="px-4 py-3">Date</th>}
+                          <th className="px-4 py-3 pr-8">Start</th>
+                          <th className="px-4 py-3 pl-2">End</th>
+                          {showExtraTimeCol && <th className="px-4 py-3">Extra Time</th>}
+                          {showHowMuchCompleteCol && (
+                            <th className="px-4 py-3">How Much Complete</th>
                           )}
-                        </colgroup>
-                        <thead>
-                          <tr className="bg-gray-50 text-left text-sm uppercase tracking-wide text-gray-500">
-                            <th className="px-4 py-3">User</th>
-                            <th className="px-4 py-3">Number</th>
-                            {showUserDateColInTable && (
-                              <th className="px-4 py-3">Date</th>
-                            )}
-                            {showUserStatusCol && <th className="px-4 py-3">Status</th>}
-                            {showUserOnTrackCol && <th className="px-4 py-3">On Track</th>}
-                            {showUserReasonCol && <th className="px-4 py-3">Reason</th>}
-                            {showUserSentCol && <th className="px-4 py-3">Sent</th>}
-                            {isUserAllFilter && <th className="px-4 py-3">Task</th>}
-                            {isUserAllFilter && (
-                              <th className="px-2 py-3" aria-label="View details" />
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {userTableQuery.data?.dailyTasks.map((dt) => {
-                            const isRemainingRow = !dt.status || dt.status === 'remaining';
-                            const useRemainingSentColors =
-                              isUserRemainingFilter || (isUserAllFilter && isRemainingRow);
+                          {showTaskReasonCol && <th className="px-4 py-3">Reason</th>}
+                          {showCompletedAtCol && <th className="px-4 py-3">Completed At</th>}
+                          <th className="px-2 py-3 whitespace-nowrap" aria-label="Status and actions">
+                            {showTaskStatusCol ? 'Status' : ''}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupedUsers.map((group, groupIndex) => (
+                          <Fragment key={group.userId}>
+                            {group.tasks.map((task, taskIndex) => {
+                              const detailData = isAllFilter
+                                ? buildAllTaskDetailModal(group, task)
+                                : buildFilterTaskDetailModal(group, task);
+                              const showEye = isAllFilter
+                                ? true
+                                : !isPendingFilter && shouldShowRowEye(detailData, truncateLength);
+                              const canEdit = isTaskEditable(task.startAt);
 
-                            return (
+                              return (
+                                <tr
+                                  key={task.id}
+                                  className={`border-t border-gray-100 hover:bg-gray-50/50 ${
+                                    taskIndex === group.tasks.length - 1
+                                      ? 'border-b-[6px] border-b-gray-100'
+                                      : ''
+                                  }`}
+                                >
+                                  {taskIndex === 0 && (
+                                    <td
+                                      rowSpan={group.tasks.length}
+                                      className="px-4 py-3 align-top border-r border-gray-100 bg-gray-50/40"
+                                    >
+                                      <div className="flex flex-col">
+                                        <div>
+                                          <div className="font-medium text-gray-900">
+                                            <TruncatedText text={group.name} maxLength={truncateLength} />
+                                          </div>
+                                          <div className="text-sm text-gray-500 mt-1">
+                                            <TruncatedText text={group.number} maxLength={truncateLength} />
+                                          </div>
+                                        </div>
+                                        <div className="pt-4 mt-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => openAddTaskModal(group)}
+                                            className={ui.btnGhostBlue}
+                                          >
+                                            <Plus size={14} strokeWidth={2.5} />
+                                            Task
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  )}
+                                  <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                    <TruncatedText text={task.name} maxLength={truncateLength} />
+                                  </td>
+                                  {showTaskDateColInTable && (
+                                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                                      {task.date ? formatShortDisplayDate(task.date) : '—'}
+                                    </td>
+                                  )}
+                                  <td className="px-4 py-3 pr-8 text-gray-700">{task.rawStartTime}</td>
+                                  <td className="px-4 py-3 pl-2 text-gray-700">{task.rawEndTime}</td>
+                                  {showExtraTimeCol && (
+                                    <td className="px-4 py-3 text-gray-700">
+                                      {formatExtraTime(task.extratTme)}
+                                    </td>
+                                  )}
+                                  {showHowMuchCompleteCol && (
+                                    <td className="px-4 py-3 text-gray-700">
+                                      <TruncatedText text={task.howmuchComplete} maxLength={truncateLength} />
+                                    </td>
+                                  )}
+                                  {showTaskReasonCol && (
+                                    <td className="px-4 py-3 text-gray-600">
+                                      {isCancelledFilter ? (
+                                        <TruncatedText text="user decline, for more info see in user tab" maxLength={truncateLength} />
+                                      ) : (
+                                        <TruncatedText text={task.remarkReason} maxLength={truncateLength} />
+                                      )}
+                                    </td>
+                                  )}
+                                  {showCompletedAtCol && (
+                                    <td className="px-4 py-3 text-gray-400">—</td>
+                                  )}
+                                  <td className="px-2 py-3 align-middle whitespace-nowrap">
+                                    <div className="flex items-center w-full">
+                                      {showTaskStatusCol && (
+                                        <TaskStatusBadge
+                                          status={getTaskDisplayStatus(task)}
+                                          large
+                                        />
+                                      )}
+                                      <span className="flex-1 flex items-center justify-center min-w-0">
+                                        {canEdit ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => openTaskEditModal(group, task)}
+                                            className="text-brand-primary hover:text-brand-primaryDark transition-colors"
+                                            aria-label="Edit task"
+                                          >
+                                            <Pencil size={18} />
+                                          </button>
+                                        ) : null}
+                                      </span>
+                                      <span className="inline-flex w-[18px] shrink-0 items-center justify-center">
+                                        {showEye ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => setTaskDetailModal(detailData)}
+                                            className="text-brand-primary hover:text-brand-primaryDark transition-colors"
+                                            aria-label={
+                                              isAllFilter
+                                                ? 'View full task details'
+                                                : 'View full details'
+                                            }
+                                          >
+                                            <Eye size={18} />
+                                          </button>
+                                        ) : null}
+                                      </span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {groupIndex < groupedUsers.length - 1 && (
+                              <tr aria-hidden="true">
+                                <td
+                                  colSpan={taskGroupedColSpan}
+                                  className="h-4 p-0 bg-gray-50/80 border-0"
+                                />
+                              </tr>
+                            )}
+                          </Fragment>
+                        ))}
+                        {!groupedUsers.length && (
+                          <tr>
+                            <td
+                              colSpan={taskGroupedColSpan}
+                              className={`${EMPTY_ROW_HEIGHT} align-middle text-center text-gray-400`}
+                            >
+                              No tasks for this period
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </DataTableShell>
+                  <div className="flex items-center justify-between gap-4 pt-4">
+                    <div className="min-w-0">
+                      {taskTableQuery.data?.pagination && (
+                        <PaginationBar
+                          pagination={taskTableQuery.data.pagination}
+                          onPageChange={setPage}
+                          onLimitChange={(l) => {
+                            setLimit(l);
+                            setPage(1);
+                          }}
+                        />
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAddUserOpen(true)}
+                      className={ui.btnPrimary}
+                    >
+                      <UserPlus size={16} />
+                      Add User
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* USER TAB */}
+        {tab === 'user' && (
+          <div className="space-y-12 flex flex-col flex-1 min-h-0">
+            {userCardsQuery.data && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                <StatCard
+                  title="Accepted"
+                  value={userCardsQuery.data.accept}
+                  icon={UserCheck}
+                  iconColor="text-green-600"
+                />
+                <StatCard
+                  title="Declined"
+                  value={userCardsQuery.data.decline}
+                  icon={UserX}
+                  iconColor="text-red-600"
+                />
+                <StatCard
+                  title="Remaining"
+                  value={userCardsQuery.data.remaining}
+                  icon={Clock}
+                  iconColor="text-amber-600"
+                />
+                <StatCard
+                  title="Attended"
+                  value={userCardsQuery.data.attented}
+                  icon={CalendarCheck}
+                  iconColor="text-brand-primary"
+                />
+                <StatCard
+                  title="Total Users"
+                  value={userCardsQuery.data.totaluser}
+                  icon={Users}
+                  iconColor="text-purple-600"
+                />
+              </div>
+            )}
+
+            <div className="flex flex-col flex-1 min-h-0">
+              <TableFilters
+                searchValue={searchInput}
+                onSearchChange={setSearchInput}
+                searchPlaceholder="Search by name or number..."
+                timeRange={userTimeRange}
+                onTimeRangeChange={setUserTimeRange}
+                leftSlot={
+                  <UserStatusFilterBar value={userStatusFilter} onChange={setUserStatusFilter} />
+                }
+              />
+
+              {isLoading ? (
+                <div className="flex justify-center py-16">
+                  <Loader2 className="animate-spin text-gray-400" size={28} />
+                </div>
+              ) : (
+                <>
+                  <DataTableShell>
+                    <table className="w-full text-base table-fixed">
+                      <colgroup>
+                        {isUserAllFilter ? (
+                          <>
+                            <col style={{ width: '22%' }} />
+                            <col style={{ width: '18%' }} />
+                            <col style={{ width: '14%' }} />
+                            <col style={{ width: '12%' }} />
+                            <col style={{ width: '10%' }} />
+                            <col style={{ width: '6%' }} />
+                          </>
+                        ) : (
+                          <>
+                            <col style={{ width: '18%' }} />
+                            <col style={{ width: '14%' }} />
+                            {showUserDateColInTable && <col style={{ width: '8%' }} />}
+                            {showUserStatusCol && <col style={{ width: '12%' }} />}
+                            {showUserOnTrackCol && <col style={{ width: '12%' }} />}
+                            {showUserReasonCol && <col style={{ width: userReasonWidth }} />}
+                            {showUserSentCol && <col style={{ width: '8%' }} />}
+                          </>
+                        )}
+                      </colgroup>
+                      <thead>
+                        <tr className="bg-gray-50 text-left text-sm uppercase tracking-wide text-gray-500">
+                          <th className="px-4 py-3">User</th>
+                          <th className="px-4 py-3">Number</th>
+                          {showUserDateColInTable && (
+                            <th className="px-4 py-3">Date</th>
+                          )}
+                          {showUserStatusCol && <th className="px-4 py-3">Status</th>}
+                          {showUserOnTrackCol && <th className="px-4 py-3">On Track</th>}
+                          {showUserReasonCol && <th className="px-4 py-3">Reason</th>}
+                          {showUserSentCol && <th className="px-4 py-3">Sent</th>}
+                          {isUserAllFilter && <th className="px-4 py-3">Task</th>}
+                          {isUserAllFilter && (
+                            <th className="px-2 py-3" aria-label="View details" />
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {userTableQuery.data?.dailyTasks.map((dt) => {
+                          const isRemainingRow = !dt.status || dt.status === 'remaining';
+                          const useRemainingSentColors =
+                            isUserRemainingFilter || (isUserAllFilter && isRemainingRow);
+
+                          return (
                             <tr key={dt.id} className="border-t border-gray-100 hover:bg-gray-50/50">
                               <td className="px-4 py-3 font-medium text-gray-900">
                                 {dt.user?.name || '—'}
@@ -1015,35 +1202,35 @@ export default function AdminDashboard({ tab, initialSearch = '', onAddTask }: A
                               )}
                             </tr>
                           );
-                          })}
-                          {!userTableQuery.data?.dailyTasks.length && (
-                            <tr>
-                              <td
-                                colSpan={isUserAllFilter ? userAllFilterColSpan : userTableColSpan}
-                                className={`${EMPTY_ROW_HEIGHT} align-middle text-center text-gray-400`}
-                              >
-                                No users for this period
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </DataTableShell>
-                    {userTableQuery.data?.pagination && (
-                      <PaginationBar
-                        pagination={userTableQuery.data.pagination}
-                        onPageChange={setPage}
-                        onLimitChange={(l) => {
-                          setLimit(l);
-                          setPage(1);
-                        }}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
+                        })}
+                        {!userTableQuery.data?.dailyTasks.length && (
+                          <tr>
+                            <td
+                              colSpan={isUserAllFilter ? userAllFilterColSpan : userTableColSpan}
+                              className={`${EMPTY_ROW_HEIGHT} align-middle text-center text-gray-400`}
+                            >
+                              No users for this period
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </DataTableShell>
+                  {userTableQuery.data?.pagination && (
+                    <PaginationBar
+                      pagination={userTableQuery.data.pagination}
+                      onPageChange={setPage}
+                      onLimitChange={(l) => {
+                        setLimit(l);
+                        setPage(1);
+                      }}
+                    />
+                  )}
+                </>
+              )}
             </div>
-          )}
+          </div>
+        )}
       </div>
 
       <Modal
@@ -1099,6 +1286,191 @@ export default function AdminDashboard({ tab, initialSearch = '', onAddTask }: A
               fullWidth
             />
           </ModalDetailGrid>
+        )}
+      </Modal>
+
+      <AddUserTaskModal
+        open={addUserOpen}
+        onClose={() => setAddUserOpen(false)}
+        onSubmit={handleCreateAddUser}
+        isSubmitting={createTaskMutation.isPending}
+      />
+
+      <Modal
+        open={!!addTaskForm}
+        onClose={() => !createTaskMutation.isPending && setAddTaskForm(null)}
+        title="Add Task"
+        size="xl"
+        headerRight={
+          addTaskForm ? (
+            <span className="text-lg font-medium text-amber-800 tabular-nums whitespace-nowrap">
+              {addTaskForm.dateLabel}
+            </span>
+          ) : null
+        }
+        footer={
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setAddTaskForm(null)}
+              disabled={createTaskMutation.isPending}
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleCreateAddTask}
+              disabled={
+                createTaskMutation.isPending ||
+                !addTaskForm?.name.trim() ||
+                !addTaskForm?.start.trim() ||
+                !addTaskForm?.end.trim()
+              }
+              className={ui.btnPrimary}
+            >
+              {createTaskMutation.isPending ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Creating…
+                </>
+              ) : (
+                'Create'
+              )}
+            </button>
+          </div>
+        }
+      >
+        {addTaskForm && (
+          <ModalDetailGrid>
+            <ModalDetailRow label="User Name" value={addTaskForm.userName} />
+            <ModalDetailRow label="User Number" value={addTaskForm.userNumber} />
+            <div className="sm:col-span-2 rounded-xl border border-gray-100 bg-white px-4 py-3.5 shadow-sm">
+              <p className="mb-1.5 text-sm font-medium text-gray-500">Task name</p>
+              <input
+                type="text"
+                value={addTaskForm.name}
+                onChange={(e) =>
+                  setAddTaskForm((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                }
+                placeholder="Task name"
+                className={ui.inputEditable}
+              />
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-white px-4 py-3.5 shadow-sm">
+              <p className="mb-1.5 text-sm font-medium text-gray-500">Start time</p>
+              <input
+                type="text"
+                value={addTaskForm.start}
+                onChange={(e) =>
+                  setAddTaskForm((prev) => (prev ? { ...prev, start: e.target.value } : prev))
+                }
+                placeholder="e.g. 9am"
+                className={ui.inputEditable}
+              />
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-white px-4 py-3.5 shadow-sm">
+              <p className="mb-1.5 text-sm font-medium text-gray-500">End time</p>
+              <input
+                type="text"
+                value={addTaskForm.end}
+                onChange={(e) =>
+                  setAddTaskForm((prev) => (prev ? { ...prev, end: e.target.value } : prev))
+                }
+                placeholder="e.g. 11am"
+                className={ui.inputEditable}
+              />
+            </div>
+          </ModalDetailGrid>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!taskEditForm}
+        onClose={() => !editTaskMutation.isPending && setTaskEditForm(null)}
+        title="Edit Task"
+        size="md"
+        headerRight={
+          taskEditForm ? (
+            <span className="text-lg font-semibold text-amber-800 tabular-nums whitespace-nowrap">
+              {taskEditForm.dateLabel}
+            </span>
+          ) : null
+        }
+        footer={
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setTaskEditForm(null)}
+              disabled={editTaskMutation.isPending}
+              className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => taskEditForm && editTaskMutation.mutate(taskEditForm)}
+              disabled={
+                editTaskMutation.isPending ||
+                !taskEditForm?.name.trim() ||
+                !taskEditForm?.start.trim() ||
+                !taskEditForm?.end.trim()
+              }
+              className={ui.btnPrimary}
+            >
+              {editTaskMutation.isPending ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                'Save'
+              )}
+            </button>
+          </div>
+        }
+      >
+        {taskEditForm && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">
+              User: <span className="font-medium text-gray-800">{taskEditForm.userName}</span>
+            </p>
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-gray-700">Task name</span>
+              <input
+                type="text"
+                value={taskEditForm.name}
+                onChange={(e) =>
+                  setTaskEditForm((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                }
+                className={ui.inputEditable}
+              />
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-gray-700">Start time</span>
+              <input
+                type="text"
+                value={taskEditForm.start}
+                onChange={(e) =>
+                  setTaskEditForm((prev) => (prev ? { ...prev, start: e.target.value } : prev))
+                }
+                placeholder="e.g. 9am"
+                className={ui.inputEditable}
+              />
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-gray-700">End time</span>
+              <input
+                type="text"
+                value={taskEditForm.end}
+                onChange={(e) =>
+                  setTaskEditForm((prev) => (prev ? { ...prev, end: e.target.value } : prev))
+                }
+                placeholder="e.g. 11am"
+                className={ui.inputEditable}
+              />
+            </label>
+          </div>
         )}
       </Modal>
 

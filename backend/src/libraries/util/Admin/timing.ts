@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { timeRange } from "domains/admin/Dashboard/service";
+import { timeRange } from "../../../domains/admin/Dashboard/service";
 import {
     addCalendarDays,
     calendarDateFromParts,
