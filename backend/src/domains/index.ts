@@ -5,6 +5,7 @@ import { webhookroutes } from "./webhook";
 import { whtsappRoutes } from "./whtsapp";
 import { taskRoutes } from "./Task";
 import { adminRoutes } from "./admin";
+import { siteRoutes } from "./site";
 
 export default function defineRoutes(expressRouter: Router): void {
   authRoutes(expressRouter);
@@ -13,4 +14,5 @@ export default function defineRoutes(expressRouter: Router): void {
   whtsappRoutes(expressRouter);
   taskRoutes(expressRouter);
   adminRoutes(expressRouter);
+  siteRoutes(expressRouter);
 }

@@ -70,6 +70,17 @@ async function sendPreviousTaskFollowupButtons(
     return result.success
 }
 
+/** WhatsApp task flows only apply to team members (role user), not managers/admins. */
+async function findActiveTaskUserByWhatsAppNumber(number: string) {
+    return prisma.user.findFirst({
+        where: {
+            deletedAt: null,
+            number,
+            role: Role.user,
+        },
+    });
+}
+
 export type CreateTaskResult = {
     success: boolean;
     status: number;
@@ -375,6 +386,7 @@ async function importTaskGroups(groups: AssignTaskSheetGroup[]): Promise<CreateT
                 const existingUser = await tx.user.findFirst({
                     where: {
                         deletedAt: null,
+                        role: Role.user,
                         OR: [
                             { number: storeUserNumber },
                             ...(data.email ? [{ email: data.email }] : []),
@@ -659,7 +671,7 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
             },
             include: {
                 children: {
-                    where: { deletedAt: null },
+                    where: { deletedAt: null, role: Role.user },
                     include: {
                         Dailytask: {
                             where:
@@ -867,12 +879,7 @@ export const updateTaskAcceptFromWhatsApp = async (
     whatsappFrom: string,
     choice: "accept" | "decline",
 ): Promise<void> => {
-    const user = await prisma.user.findFirst({
-        where: {
-            deletedAt: null,
-            number: whatsappFrom,
-        },
-    });
+    const user = await findActiveTaskUserByWhatsAppNumber(whatsappFrom);
     if (!user) {
         logger.info(`Daily Task no user for from=${whatsappFrom}`);
         return;
@@ -917,12 +924,7 @@ export const handleDeclineReason = async (
         const cleanReason = reason.trim();
         if (!cleanReason) return false;
 
-        const user = await prisma.user.findFirst({
-            where: {
-                deletedAt: null,
-                number: from,
-            },
-        });
+        const user = await findActiveTaskUserByWhatsAppNumber(from);
         if (!user) return false;
 
         const pendingDailyTaskId = pendingDeclineReasonByUserId.get(user.id);
@@ -962,7 +964,7 @@ export const sendRemaingstatusTomanager = async (): Promise<RemainingStatusResul
             where: { role: Role.manager, deletedAt: null },
             include: {
                 children: {
-                    where: { deletedAt: null },
+                    where: { deletedAt: null, role: Role.user },
                     select: { id: true, name: true, number: true },
                 },
             },
@@ -1094,6 +1096,7 @@ export const finalDecisionDailyTask = async (): Promise<FinalDecisionResult> => 
                 sent: true,
                 status: AcceptStatus.accept,
                 finaldecision: null,
+                user: { deletedAt: null, role: Role.user },
             },
             include: {
                 user: { select: { id: true, name: true, number: true } },
@@ -1156,9 +1159,7 @@ export const finalDecisionDailyTask = async (): Promise<FinalDecisionResult> => 
 
 export const updateFinalDecision = async (id: string, from: string, choice: "ontrack" | "no") => {
     try {
-        const user = await prisma.user.findFirst({
-            where: { deletedAt: null, number: from },
-        });
+        const user = await findActiveTaskUserByWhatsAppNumber(from);
 
         if (!user) {
             await sendMessageOnWhatsapp({
@@ -1276,9 +1277,7 @@ export const handleFinalDecisionRemarkReason = async (
         const cleanReason = reason.trim();
         if (!cleanReason) return false;
 
-        const user = await prisma.user.findFirst({
-            where: { deletedAt: null, number: from },
-        });
+        const user = await findActiveTaskUserByWhatsAppNumber(from);
         if (!user) return false;
 
         const pendingDailyTaskId = pendingFinalDecisionRemarkByUserId.get(user.id);
@@ -1348,9 +1347,7 @@ export const handleFinalDecisionAbsentReason = async (from: string, reason: stri
         const cleanReason = reason.trim();
         if (!cleanReason) return false;
 
-        const user = await prisma.user.findFirst({
-            where: { deletedAt: null, number: from },
-        });
+        const user = await findActiveTaskUserByWhatsAppNumber(from);
         if (!user) return false;
 
         const pendingDailyTaskId = pendingFinalDecisionAbsentByUserId.get(user.id);
@@ -1433,7 +1430,11 @@ export const sendStartTask = async (
         }
 
         const tasks = await prisma.task.findMany({
-            where: { id: { in: taskIds }, deletedAt: null },
+            where: {
+                id: { in: taskIds },
+                deletedAt: null,
+                user: { deletedAt: null, role: Role.user },
+            },
             select: {
                 id: true,
                 name: true,
@@ -1589,12 +1590,7 @@ export const sendStartTask = async (
 
 export const handleStarttaskStatus = async (taskId: string, whatsappFrom: string, ch: startChoice) => {
     try {
-        const user = await prisma.user.findFirst({
-            where: {
-                deletedAt: null,
-                number: whatsappFrom,
-            },
-        });
+        const user = await findActiveTaskUserByWhatsAppNumber(whatsappFrom);
 
         if (!user) {
             await sendMessageOnWhatsapp({
@@ -1670,7 +1666,7 @@ export const handleStarttaskStatus = async (taskId: string, whatsappFrom: string
 
 export const handleStartTaskDelayTime = async (from: string, time: string) => {
     try {
-        const user = await prisma.user.findFirst({ where: { number: from } })
+        const user = await findActiveTaskUserByWhatsAppNumber(from)
 
         if (!user) return false
 
@@ -1836,7 +1832,11 @@ export const sendTaskFollowUp = async (taskIds: string[]): Promise<TaskResult> =
         }
 
         const tasks = await prisma.task.findMany({
-            where: { id: { in: taskIds }, deletedAt: null },
+            where: {
+                id: { in: taskIds },
+                deletedAt: null,
+                user: { deletedAt: null, role: Role.user },
+            },
             select: {
                 id: true,
                 name: true,
@@ -1960,12 +1960,7 @@ export const sendTaskFollowUp = async (taskIds: string[]): Promise<TaskResult> =
 
 export const handleFollowUp = async (taskId: string, whatsappFrom: string, ch: choices) => {
     try {
-        const user = await prisma.user.findFirst({
-            where: {
-                deletedAt: null,
-                number: whatsappFrom,
-            },
-        });
+        const user = await findActiveTaskUserByWhatsAppNumber(whatsappFrom);
 
         if (!user) {
             await sendMessageOnWhatsapp({
@@ -2045,12 +2040,7 @@ export const handleFollowUpReply = async (whatsappFrom: string, text: string): P
         const clean = text.trim();
         if (!clean) return false;
 
-        const user = await prisma.user.findFirst({
-            where: {
-                deletedAt: null,
-                number: whatsappFrom,
-            },
-        });
+        const user = await findActiveTaskUserByWhatsAppNumber(whatsappFrom);
         if (!user) return false;
 
         const pending = getPendingFollowUp(user.id);
@@ -2286,12 +2276,7 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
 
 export const handlePendigTaskUpdateText = async (from: string) => {
     try {
-        const user = await prisma.user.findFirst({
-            where: {
-                number: from,
-                role: Role.user,
-            },
-        });
+        const user = await findActiveTaskUserByWhatsAppNumber(from);
 
         if (!user) {
             await sendMessageOnWhatsapp({
@@ -2405,7 +2390,7 @@ export const sendPreviousTaskHoldReminders = async (): Promise<TaskResult> => {
                     status: AcceptStatus.accept,
                     finaldecision: { in: ["onTrack", "remark"] },
                 },
-                user: { deletedAt: null },
+                user: { deletedAt: null, role: Role.user },
             },
             select: {
                 id: true,
@@ -2474,7 +2459,7 @@ export const handlePreviousTaskFollowupStatus = async (taskId: string, from: str
     try {
 
         const currentTime = new Date()
-        const user = await prisma.user.findFirst({ where: { number: from, deletedAt: null } })
+        const user = await findActiveTaskUserByWhatsAppNumber(from)
 
         if (!user) {
             await sendMessageOnWhatsapp({ number: from, message: "user not Found , please contact Admin/Manager" })

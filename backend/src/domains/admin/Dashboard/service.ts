@@ -270,7 +270,7 @@ export const taskTable = async (
         logger.error("Error in fetch task table Details !", error);
         await notifyAdminError("fetch task table details");
         throw new AppError("Internal server Error while fetch the Task Table Details", error.message);
-    }
+    }   
 };
 
 export const userCardDetails = async (time: timeRange) => {

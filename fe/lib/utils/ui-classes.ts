@@ -14,9 +14,8 @@ export const ui = {
     'px-4 py-2 rounded-full text-[14px] font-semibold whitespace-nowrap transition-all bg-brand-primary text-white shadow-blue-sm',
   tabInactive:
     'px-4 py-2 rounded-full text-[14px] font-semibold whitespace-nowrap transition-all text-gray-600 hover:text-brand-primary hover:bg-white',
-  navActive:
-    'bg-brand-pastel-blue text-brand-primary font-semibold shadow-sm border border-brand-primary/15',
-  navInactive: 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 border border-transparent',
+  navActive: 'bg-gray-100 text-gray-900 font-medium',
+  navInactive: 'text-gray-500 hover:text-gray-900',
   linkPrimary: 'text-sm font-semibold text-brand-primary hover:text-brand-primaryDark transition-colors',
   inputEditable:
     'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-base shadow-sm transition-colors hover:border-brand-primary/35 hover:bg-brand-pastel-blue/40 focus:border-brand-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 placeholder:text-gray-400',

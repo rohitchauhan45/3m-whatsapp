@@ -191,7 +191,7 @@ export const getAllManagers = async () => {
     }
 };
 
-export const getAllCronjobs = async () => {
+export const getAllCronjobs = async () => { 
     try {
         const crons = await prisma.cron.findMany({ orderBy: { name: "asc" } });
 
@@ -286,4 +286,4 @@ export const updateAdminCronjob = async (id: string, data: cronjobData) => {
         await notifyAdminError("update cronjob");
         throw new AppError("Error updating cronjob", error.message, 500);
     }
-};
+}

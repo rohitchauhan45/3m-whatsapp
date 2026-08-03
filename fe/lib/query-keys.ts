@@ -13,6 +13,9 @@ export const queryKeys = {
     userTable: (params: Record<string, unknown>) =>
       ['dashboard', 'user-table', params] as const,
   },
+  sites: ['sites'] as const,
+  siteDetail: (siteId: string) => ['sites', siteId] as const,
+  siteAssignableUsers: (siteId: string) => ['sites', siteId, 'assignable-users'] as const,
 } as const;
 
 export function invalidateDashboardQueries(queryClient: QueryClient) {

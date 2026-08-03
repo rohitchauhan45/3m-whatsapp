@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Settings, Menu, Users, ArrowRight, X, LogOut, ChevronsLeft, ChevronsRight, ClipboardList, UserRound } from 'lucide-react';
+import { LayoutDashboard, Settings, Menu, Users, ArrowRight, X, LogOut, ChevronsLeft, ChevronsRight, ClipboardList, UserRound, MapPin } from 'lucide-react';
 import { useAuth, isAdmin } from '@/lib/utils/auth';
 import { ui } from '@/lib/utils/ui-classes';
 import PageHeader from '@/components/layout/PageHeader';
@@ -20,20 +20,33 @@ export default function DashboardLayout({
   const router = useRouter();
   const { logout, user } = useAuth();
 
-  const NavItem = ({ path, icon: Icon, label, collapsed }: { path: string; icon: any; label: string; collapsed: boolean }) => {
-    const isActive = pathname === path;
+  const NavItem = ({
+    path,
+    icon: Icon,
+    label,
+    collapsed,
+  }: {
+    path: string;
+    icon: React.ElementType;
+    label: string;
+    collapsed: boolean;
+  }) => {
+    const isActive = pathname === path || pathname.startsWith(`${path}/`);
     const showLabel = !collapsed;
     return (
       <Link
         href={path}
         onClick={() => setIsMobileMenuOpen(false)}
-        className={`w-full flex items-center justify-start px-3 py-3 rounded-xl transition-all duration-200 group ${
+        className={`w-full flex items-center justify-start px-3 py-3 rounded-xl transition-colors duration-200 group ${
           isActive ? ui.navActive : ui.navInactive
-        } ${collapsed ? 'md:px-2 md:py-2.5' : 'md:px-4'}`}
+        } ${collapsed ? 'md:px-2 md:py-2.5' : 'md:px-3'}`}
       >
         <div className={`flex items-center ${collapsed ? 'justify-center w-full' : 'space-x-3'}`}>
-          <Icon size={20} className={`${isActive ? 'text-brand-primary' : 'text-gray-400 group-hover:text-brand-primary'} transition-colors`} />
-          {showLabel && <span className="text-[14px]">{label}</span>}
+          <Icon
+            size={20}
+            className={`${isActive ? 'text-gray-900' : 'text-gray-400 group-hover:text-gray-600'} transition-colors`}
+          />
+          {showLabel && <span className="text-[15px]">{label}</span>}
         </div>
       </Link>
     );
@@ -108,8 +121,7 @@ export default function DashboardLayout({
             </div>
 
             {/* Navigation Links */}
-            <div className={`flex-1 px-3 py-2 space-y-3 overflow-y-auto no-scrollbar ${isCollapsed ? 'md:px-2' : ''}`}>
-              {!isCollapsed && <div className="px-3 pt-2 text-[11px] font-semibold text-gray-400 tracking-[0.2em]">GENERAL</div>}
+            <div className={`flex-1 px-4 py-3 overflow-y-auto no-scrollbar ${isCollapsed ? 'md:px-2' : ''}`}>
               <div className="space-y-1">
                 <NavItem path="/dashboard" icon={LayoutDashboard} label="Dashboard" collapsed={isCollapsed} />
                 {isAdmin(user) && (
@@ -120,6 +132,9 @@ export default function DashboardLayout({
                 )}
                 {isAdmin(user) && (
                   <NavItem path="/users" icon={Users} label="User Management" collapsed={isCollapsed} />
+                )}
+                {isAdmin(user) && (
+                  <NavItem path="/sites" icon={MapPin} label="Site" collapsed={isCollapsed} />
                 )}
               </div>
             </div>

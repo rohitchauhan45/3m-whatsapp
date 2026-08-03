@@ -12,6 +12,12 @@ enum Role{
   admin
 }
 
+enum Status{
+  active
+  inactive
+  deleted
+}
+
 enum Provider{
   whatsapp
   local
@@ -90,6 +96,8 @@ model User{
   attendence      Attendence[]
   conversation    WhatsAppConversation[]
   adminSetting    AdminSettings[]
+  createdsites    Site[]    @relation("Createdsites")
+  sitelocations   UserSite[]
 
   @@index([parentId])
 }
@@ -225,4 +233,37 @@ model AdminSettings {
   admin     User     @relation(fields:[adminId], references:[id] , onDelete:Cascade)
   
   @@index([adminId])
+}
+
+model Site {
+  id        String    @id @default(cuid())
+  name      String
+  address   String
+  latitude  Float
+  longitude Float
+
+  radius    Int       @default(200)
+  status    Status    @default(active)
+
+  addedbyId String
+  addedby   User      @relation("Createdsites" , fields:[addedbyId] ,references:[id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  users     UserSite[]
+}
+
+model UserSite {
+  id        String   @id @default(cuid())
+  userId    String
+  siteId    String
+ 
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields:[userId] ,references:[id])
+  site      Site     @relation(fields:[siteId] , references:[id])
+
+  @@unique([userId,siteId])
 }
