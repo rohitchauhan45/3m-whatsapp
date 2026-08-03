@@ -959,12 +959,26 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                 let sendAt: Date | undefined;
 
                 if (!existingConversation) {
+                    const taskList = formatAssignTaskListForTemplate(
+                        dailyTask.tasks.map((t) => ({
+                            name: t.name,
+                            rawStartTime: t.rawStartTime,
+                            rawEndTime: t.rawEndTime,
+                        })),
+                    );
                     // Case 1: user never touched us before → send welcome template
                     sendAt = new Date();
                     result = await sendWhatsappTemplate({
                         number: child.number,
-                        tname: "welcome_3m",
-                        parameters: [{ parameter_name: "user_name", text: child.name }],
+                        tname: "daily_task_assignment",
+                        parameters: [
+                            { parameter_name: "user_name", text: child.name },
+                            { parameter_name: "task_list", text: taskList },
+                        ],
+                        buttons: [
+                            { title: "Accept", id: `accept_${dailyTask.id}` },
+                            { title: "Decline", id: `decline_${dailyTask.id}` },
+                        ],
                     });
                 } else {
                     const windowExpireTime = existingConversation.windowExpiresAt;
