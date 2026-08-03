@@ -53,8 +53,14 @@ function parseCoordinate(value: unknown): number | null {
 
 function parseButtonPayload(payload: string): { action: string; id: string } | null {
     const trimmed = payload.trim();
+    if (!trimmed) return null;
+
     const sep = trimmed.indexOf("_");
-    if (sep < 1) return null;
+    if (sep < 0) {
+        return { action: trimmed.toLowerCase(), id: "" };
+    }
+    if (sep === 0) return null;
+
     return {
         action: trimmed.slice(0, sep).toLowerCase(),
         id: trimmed.slice(sep + 1),
@@ -65,7 +71,10 @@ function parseButtonPayload(payload: string): { action: string; id: string } | n
 function extractButtonPayload(msg: Record<string, unknown>, type: string): string | null {
     if (type === "button" && isRecord(msg.button)) {
         const payload = msg.button.payload;
-        return typeof payload === "string" ? payload : null;
+        if (typeof payload === "string" && payload.trim()) return payload;
+
+        const text = msg.button.text;
+        return typeof text === "string" && text.trim() ? text : null;
     }
 
     if (type === "interactive" && isRecord(msg.interactive)) {
@@ -90,35 +99,41 @@ async function findUserByWhatsAppNumber(from: string) {
 }
 
 async function handleButtonAction(
-    from: string,
+    storedNumber: string,
     userId: string,
     action: string,
     id: string,
 ): Promise<void> {
-    await touchConversation(userId, from);
+    await touchConversation(userId, storedNumber);
+
+    // manager_reminder template quick-reply (payload: "hii")
+    if (action === "hii" || action === "hi") {
+        logger.info(`webhook manager reminder acknowledged userId=${userId} number=${storedNumber}`);
+        return;
+    }
 
     if (action === "accept" || action === "decline") {
-        await updateTaskAcceptFromWhatsApp(id, from, action);
+        await updateTaskAcceptFromWhatsApp(id, storedNumber, action);
         return;
     }
 
     if (action === "start" || action === "taskquery" || action === "delay") {
-        await handleStarttaskStatus(id, from, action);
+        await handleStarttaskStatus(id, storedNumber, action);
         return;
     }
 
     if (action === "inprogress" || action === "remark" || action === "done") {
-        await handleFollowUp(id, from, action);
+        await handleFollowUp(id, storedNumber, action);
         return;
     }
 
     if (action === "ontrack" || action === "no") {
-        await updateFinalDecision(id, from, action);
+        await updateFinalDecision(id, storedNumber, action);
         return;
     }
 
     if (action === "blocked" || action === "completed" || action === "hold") {
-        await handlePreviousTaskFollowupStatus(id, from, action);
+        await handlePreviousTaskFollowupStatus(id, storedNumber, action);
     }
 }
 
@@ -154,13 +169,13 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
             logger.warn(`webhook unparseable button payload from=${from} payload=${buttonPayload}`);
             return;
         }
-        logger.info(`webhook button from=${from} action=${parsed.action} id=${parsed.id}`);
-        await handleButtonAction(from, user.id, parsed.action, parsed.id);
+        logger.info(`webhook button from=${from} action=${parsed.action} id=${parsed.id || "(none)"}`);
+        await handleButtonAction(user.number, user.id, parsed.action, parsed.id);
         return;
     }
 
     if (type === "text" && isRecord(msg.text)) {
-        await touchConversation(user.id, from)
+        await touchConversation(user.id, user.number)
 
         const textBody = typeof msg.text.body === "string" ? msg.text.body.trim() : "";
         if (!textBody) return;
@@ -192,7 +207,7 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
 
     if (type === "location" && isRecord(msg.location)) {
 
-        await touchConversation(user.id, from)
+        await touchConversation(user.id, user.number)
 
         const latitude = parseCoordinate(msg.location.latitude);
         const longitude = parseCoordinate(msg.location.longitude);

@@ -69,6 +69,12 @@ async function sendManagerReminderTemplate(manager: ManagerContact): Promise<boo
         buttons: [{ title: "Hii", id: MANAGER_REMINDER_BUTTON_ID }],
     });
 
+    if (!result.success) {
+        logger.warn(
+            `manager_reminder template failed managerId=${manager.id} number=${phone} detail=${result.message}`,
+        );
+    }
+
     return result.success;
 }
 
