@@ -206,82 +206,132 @@ const clearPendingFollowUp = (userId: string): void => {
     pendingFollowUpByUserId.delete(userId);
 }
 
-function processImportWelcomeMessagesInBackground(recipients: WelcomeRecipient[]): void {
-    if (recipients.length === 0) {
-        return;
+function sendWelcomeMsgInBackground(): void {
+    void sendWelcomeMsg().catch((err) => {
+        logger.error("sendWelcomeMsg background job failed", err);
+        void notifyAdminError("sendWelcomeMsg");
+    });
+}
+
+export async function sendWelcomeMsg(): Promise<SendWelcomeMsgResult> {
+    const pending = await prisma.user.findMany({
+        where: {
+            deletedAt: null,
+            isWelcomemsgSend: false,
+            role: { in: [Role.user, Role.manager] },
+        },
+        select: {
+            id: true,
+            name: true,
+            number: true,
+            role: true,
+        },
+        orderBy: { createdAt: "asc" },
+    });
+
+    if (pending.length === 0) {
+        return {
+            success: true,
+            status: 200,
+            message: "No pending welcome messages",
+            userSent: 0,
+            managerSent: 0,
+            userFailed: 0,
+            managerFailed: 0,
+        };
     }
 
-    void (async () => {
-        let userSuccess = 0;
-        let managerSuccess = 0;
-        let userFailed = 0;
-        let managerFailed = 0;
+    let userSent = 0;
+    let managerSent = 0;
+    let userFailed = 0;
+    let managerFailed = 0;
 
-        for (const recipient of recipients) {
-            const isManager = recipient.label === "new manager";
+    for (const person of pending) {
+        const phone = person.number?.trim() ?? "";
+        if (!phone) {
+            if (person.role === Role.manager) {
+                managerFailed += 1;
+            } else {
+                userFailed += 1;
+            }
+            logger.warn(`sendWelcomeMsg skip ${person.role} id=${person.id}: no phone number`);
+            continue;
+        }
 
-            try {
-                const result = await sendWhatsappTemplate({
-                    number: recipient.number,
-                    tname: "welcome_3m",
-                    parameters: [{ parameter_name: "user_name", text: recipient.name }],
+        const isManager = person.role === Role.manager;
+
+        try {
+            const result = await sendWhatsappTemplate({
+                number: phone,
+                tname: "welcome_3m",
+                parameters: [{ parameter_name: "user_name", text: person.name }],
+            });
+
+            if (result.success) {
+                await prisma.user.update({
+                    where: { id: person.id },
+                    data: { isWelcomemsgSend: true },
                 });
 
-                if (result.success) {
-                    if (isManager) {
-                        managerSuccess += 1;
-                    } else {
-                        userSuccess += 1;
-                    }
-                    logger.info(
-                        `createTask welcome sent to ${recipient.label} number=${recipient.number}`,
-                    );
+                if (isManager) {
+                    managerSent += 1;
                 } else {
-                    if (isManager) {
-                        managerFailed += 1;
-                    } else {
-                        userFailed += 1;
-                    }
-                    logger.warn(
-                        `createTask welcome failed for ${recipient.label} number=${recipient.number} detail=${result.message}`,
-                    );
+                    userSent += 1;
                 }
-            } catch (err) {
+                logger.info(`sendWelcomeMsg sent to ${person.role} number=${phone}`);
+            } else {
                 if (isManager) {
                     managerFailed += 1;
                 } else {
                     userFailed += 1;
                 }
-                logger.error(
-                    `createTask welcome error for ${recipient.label} number=${recipient.number}`,
-                    err,
+                logger.warn(
+                    `sendWelcomeMsg failed for ${person.role} number=${phone} detail=${result.message}`,
                 );
             }
+        } catch (err) {
+            if (isManager) {
+                managerFailed += 1;
+            } else {
+                userFailed += 1;
+            }
+            logger.error(`sendWelcomeMsg error for ${person.role} number=${phone}`, err);
         }
+    }
 
-        const totalFailed = userFailed + managerFailed;
+    const totalFailed = userFailed + managerFailed;
 
-        if (totalFailed === 0) {
-            const lines = [
-                `${userSuccess}-user`,
-                `${managerSuccess}-manager`,
-                "send welcome messages successfully",
-            ];
-            await notifyAdminMessage(lines.join("\n"));
-            return;
-        }
+    if (userSent + managerSent > 0 && totalFailed === 0) {
+        await notifyAdminMessage(
+            [`${userSent}-user`, `${managerSent}-manager`, "send welcome messages successfully"].join(
+                "\n",
+            ),
+        );
+    } else if (userSent + managerSent > 0) {
+        await notifyAdminMessage(
+            [
+                `${userSent}-user`,
+                `${managerSent}-manager`,
+                `welcome failed: ${userFailed} user, ${managerFailed} manager`,
+            ].join("\n"),
+        );
+        await notifyAdminError("sendWelcomeMsg");
+    } else if (totalFailed > 0) {
+        await notifyAdminError("sendWelcomeMsg");
+    }
 
-        const summaryLines = [
-            `${userSuccess}-user`,
-            `${managerSuccess}-manager`,
-            `welcome failed: ${userFailed} user, ${managerFailed} manager`,
-        ];
-        await notifyAdminMessage(summaryLines.join("\n"));
-        await notifyAdminError("createTask welcome messages");
-    })().catch((err) => {
-        logger.error("createTask welcome batch failed", err);
-        void notifyAdminError("createTask welcome messages");
-    });
+    return {
+        success: totalFailed === 0,
+        status: totalFailed === 0 ? 200 : 500,
+        message:
+            totalFailed === 0
+                ? `Welcome messages sent (${userSent} user, ${managerSent} manager).`
+                : `Welcome messages partially failed (${userFailed} user, ${managerFailed} manager).`,
+        userSent,
+        managerSent,
+        userFailed,
+        managerFailed,
+    };
 }
 
 function groupImportRows(flatRows: TaskImportRow[]): AssignTaskSheetGroup[] {
@@ -386,10 +436,14 @@ type PreparedImportGroup = {
     }>;
 };
 
-type WelcomeRecipient = {
-    number: string;
-    name: string;
-    label: string;
+export type SendWelcomeMsgResult = {
+    success: boolean;
+    status: number;
+    message: string;
+    userSent: number;
+    managerSent: number;
+    userFailed: number;
+    managerFailed: number;
 };
 
 function validateImportGroups(groups: AssignTaskSheetGroup[]): {
@@ -459,6 +513,16 @@ function validateImportGroups(groups: AssignTaskSheetGroup[]): {
                 tasksWithTime.length = 0;
                 break;
             }
+            if (endAt.getTime() <= startAt.getTime()) {
+                failedRows.push({
+                    row: g.startRow,
+                    reason:
+                        `End time must be after start time for task "${task.name}" ` +
+                        `(start ${task.rawStartTime}, end ${task.rawEndTime}).`,
+                });
+                tasksWithTime.length = 0;
+                break;
+            }
             tasksWithTime.push({
                 name: task.name,
                 rawStartTime: task.rawStartTime,
@@ -507,9 +571,6 @@ async function importTaskGroups(groups: AssignTaskSheetGroup[]): Promise<CreateT
         };
     }
 
-    const welcomeRecipients: WelcomeRecipient[] = [];
-    const welcomedManagers = new Set<string>();
-
     try {
         await prisma.$transaction(
             async (tx) => {
@@ -549,15 +610,6 @@ async function importTaskGroups(groups: AssignTaskSheetGroup[]): Promise<CreateT
                                 id: createdManager.id,
                                 name: data.managerName,
                             });
-
-                            if (!welcomedManagers.has(storeManagerNumber)) {
-                                welcomedManagers.add(storeManagerNumber);
-                                welcomeRecipients.push({
-                                    number: storeManagerNumber,
-                                    name: data.managerName,
-                                    label: "new manager",
-                                });
-                            }
                         }
                     }
 
@@ -589,11 +641,6 @@ async function importTaskGroups(groups: AssignTaskSheetGroup[]): Promise<CreateT
                             tx,
                         });
                         userId = created.id;
-                        welcomeRecipients.push({
-                            number: storeUserNumber,
-                            name: data.name,
-                            label: "new user",
-                        });
                     }
 
                     const dayDate = data.date;
@@ -649,7 +696,7 @@ async function importTaskGroups(groups: AssignTaskSheetGroup[]): Promise<CreateT
         };
     }
 
-    processImportWelcomeMessagesInBackground(welcomeRecipients);
+    sendWelcomeMsgInBackground();
 
     return {
         success: true,
@@ -1627,7 +1674,7 @@ export const sendStartTask = async (
 
         const managerStats = new Map<
             string,
-            { manager: { name: string; number: string }; sent: number; userIds: Set<string> }
+            { manager: { id: string; name: string; number: string }; sent: number; userIds: Set<string> }
         >();
 
         for (const task of tasks) {
@@ -2028,7 +2075,7 @@ export const sendTaskFollowUp = async (taskIds: string[]): Promise<TaskResult> =
         const managerFailures = new Map<
             string,
             {
-                manager: { name: string; number: string };
+                manager: { id: string; name: string; number: string };
                 failed: number;
                 users: Map<string, { name: string; number: string }>;
             }

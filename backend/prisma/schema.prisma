@@ -69,35 +69,36 @@ enum Setting{
 }
 
 model User{
-  id              String    @id @default(cuid())
-  name            String   
-  username        String    @unique @default(cuid())
-  number          String  
-  role            Role      @default(user)
-  email           String?   @unique
-  emailVerified   Boolean   @default(false)
-  password        String?
-  notAttentReason String?  
-  provider        Provider  @default(whatsapp) 
+  id               String    @id @default(cuid())
+  name             String   
+  username         String    @unique @default(cuid())
+  number           String  
+  role             Role      @default(user)
+  email            String?   @unique
+  emailVerified    Boolean   @default(false)
+  isWelcomemsgSend Boolean   @default(false)
+  password         String?
+  notAttentReason  String?  
+  provider         Provider  @default(whatsapp) 
 
  //relations
-  parentId        String?
-  parent          User?     @relation("UserHierarchy",fields:[parentId],references:[id])
-  children        User[]    @relation("UserHierarchy")
+  parentId         String?
+  parent           User?     @relation("UserHierarchy",fields:[parentId],references:[id])
+  children         User[]    @relation("UserHierarchy")
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  deletedAt       DateTime? 
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime? 
 
   // revres connection
-  Dailytask       DailyTask[]
-  tasks           Task[]
-  cron            Cron[]
-  attendence      Attendence[]
-  conversation    WhatsAppConversation[]
-  adminSetting    AdminSettings[]
-  createdsites    Site[]    @relation("Createdsites")
-  sitelocations   UserSite[]
+  Dailytask        DailyTask[]
+  tasks            Task[]
+  cron             Cron[]
+  attendence       Attendence[]
+  conversation     WhatsAppConversation[]
+  adminSetting     AdminSettings[]
+  createdsites     Site[]    @relation("Createdsites")
+  sitelocations    UserSite[]
 
   @@index([parentId])
 }

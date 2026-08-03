@@ -1,6 +1,13 @@
 import { prisma } from "../db";
 import logger from "../log/logger";
-import { sendMessageOnWhatsapp } from "../../domains/whtsapp/sendWhatsApp";
+import {
+    sanitizeWhatsAppTemplateParam,
+    sendMessageOnWhatsapp,
+    sendWhatsappTemplate,
+} from "../../domains/whtsapp/sendWhatsApp";
+
+const DEVELOPER_ERROR_TEMPLATE = "developer_error";
+const MAX_ERROR_NAME_LEN = 1024;
 
 let adminPromise: ReturnType<
     typeof prisma.user.findFirst<{ select: { number: true } }>
@@ -22,10 +29,22 @@ export async function notifyAdminError(context: string): Promise<void> {
             logger.warn(`notifyAdminError: admin phone not found (context="${context}")`);
             return;
         }
-        await sendMessageOnWhatsapp({
+
+        const errorName = sanitizeWhatsAppTemplateParam(
+            `${context}`,
+        ).slice(0, MAX_ERROR_NAME_LEN);
+
+        const result = await sendWhatsappTemplate({
             number: adminUser.number,
-            message: `💀 Error in ${context}, please check logs/code`,
+            tname: DEVELOPER_ERROR_TEMPLATE,
+            parameters: [{ parameter_name: "error_name", text: errorName }],
         });
+
+        if (!result.success) {
+            logger.warn(
+                `notifyAdminError template failed (context="${context}") detail=${result.message}`,
+            );
+        }
     } catch (notifyErr) {
         logger.error(`notifyAdminError failed (context="${context}")`, notifyErr);
     }

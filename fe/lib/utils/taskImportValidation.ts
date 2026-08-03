@@ -70,29 +70,42 @@ export function validateTaskDate(date: string): string | null {
 }
 
 export function isValidTaskTime(raw: string): boolean {
+  return parseTaskTimeToMinutes(raw) !== null;
+}
+
+/** Minutes from midnight (IST wall clock) for comparing start/end on the same day. */
+export function parseTaskTimeToMinutes(raw: string): number | null {
   const value = raw.trim().toLowerCase();
-  if (!value) return false;
+  if (!value) return null;
 
   const ampm = value.match(/^(\d{1,2})(?::(\d{1,2}))?\s*(am|pm)$/i);
   if (ampm) {
-    const hour = Number(ampm[1]);
+    let hour = Number(ampm[1]);
     const minute = Number(ampm[2] ?? '0');
-    if (Number.isNaN(hour) || Number.isNaN(minute) || minute < 0 || minute > 59) return false;
-    if (hour < 1 || hour > 12) return false;
-    return true;
+    if (Number.isNaN(hour) || Number.isNaN(minute) || minute < 0 || minute > 59) return null;
+    if (hour < 1 || hour > 12) return null;
+    const period = ampm[3].toLowerCase();
+    if (period === 'am') {
+      if (hour === 12) hour = 0;
+    } else if (hour !== 12) {
+      hour += 12;
+    }
+    return hour * 60 + minute;
   }
 
   const twentyFour = value.match(/^(\d{1,2}):(\d{2})$/);
   if (twentyFour) {
     const hour = Number(twentyFour[1]);
     const minute = Number(twentyFour[2]);
-    return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return hour * 60 + minute;
   }
 
-  return false;
+  return null;
 }
 
 const TIME_HINT = 'Use values like 9am, 11am, 4:25pm, or 16:30.';
+const END_BEFORE_START_ERROR = 'end time must be after start time.';
 
 export type PreviewValidationResult = {
   valid: boolean;
@@ -143,6 +156,14 @@ export function validatePreviewRows(rows: TaskPreviewRow[]): PreviewValidationRe
       errors.push(`${label}: end time is required.`);
     } else if (!isValidTaskTime(row.rawEndTime)) {
       errors.push(`${label}: invalid end time. ${TIME_HINT}`);
+    }
+
+    const startMinutes = parseTaskTimeToMinutes(row.rawStartTime);
+    const endMinutes = parseTaskTimeToMinutes(row.rawEndTime);
+    if (startMinutes !== null && endMinutes !== null && endMinutes <= startMinutes) {
+      errors.push(
+        `${label}: ${END_BEFORE_START_ERROR} (start ${row.rawStartTime.trim()}, end ${row.rawEndTime.trim()}).`,
+      );
     }
   }
 

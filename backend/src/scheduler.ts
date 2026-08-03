@@ -20,6 +20,7 @@ import {
 } from "./constants/cronSettings";
 import { notifyDashboardUpdate } from "./libraries/realtime";
 import { notifyAdminError } from "./libraries/util/notifyAdminError";
+import { sendManagerWindowReminders } from "./domains/conversation/service";
 
 let assignJob: CronJob | null = null;
 let followUpJob: CronJob | null = null;
@@ -168,6 +169,12 @@ async function runFollowUpForAll() {
 
         const holdReminderResult = await sendPreviousTaskHoldReminders();
         logger.info(`cron previous-task hold reminders done: ${holdReminderResult.message}`);
+
+        const managerReminderResult = await sendManagerWindowReminders();
+        logger.info(
+            `cron manager window reminders done: sent=${managerReminderResult.sent} failed=${managerReminderResult.failed} skipped=${managerReminderResult.skipped}`,
+        );
+
         notifyDashboardUpdate();
     } catch (err) {
         logger.error("cron start/follow-up failed", err);

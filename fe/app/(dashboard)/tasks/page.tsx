@@ -49,13 +49,16 @@ function TasksPageContent() {
         showError(formatUploadErrorMessage(res));
         return;
       }
-      setPreviewRows(
-        res.rows.map((row, index) => ({
-          ...row,
-          id: `${row.startRow}-${index}`,
-        })),
-      );
+      const mappedRows = res.rows.map((row, index) => ({
+        ...row,
+        id: `${row.startRow}-${index}`,
+      }));
+      setPreviewRows(mappedRows);
       setView('preview');
+      const validation = validatePreviewRows(mappedRows);
+      if (!validation.valid) {
+        showError(validation.errors.join('\n'));
+      }
     },
     onError: (err: Error) => showError(err.message),
   });

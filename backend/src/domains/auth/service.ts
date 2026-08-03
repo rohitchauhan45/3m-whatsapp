@@ -364,6 +364,7 @@ async function createUserWhatsApp(input: {
             role: Role.user,
             provider: Provider.whatsapp,
             parentId: input.parentId,
+            isWelcomemsgSend: false,
             ...(input.email ? { email: input.email } : {}),
         },
     });
