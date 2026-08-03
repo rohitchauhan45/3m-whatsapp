@@ -19,6 +19,7 @@ import { sendMessageOnWhatsapp } from "../../domains/whtsapp/sendWhatsApp";
 import { touchConversation } from "../../domains/conversation/service";
 import { notifyDashboardUpdate } from "../../libraries/realtime";
 import { notifyAdminError } from "../../libraries/util/notifyAdminError";
+import { numberLookupVariants } from "../../libraries/util/Task/number";
 
 dotenv.config();
 
@@ -50,7 +51,77 @@ function parseCoordinate(value: unknown): number | null {
     return null;
 }
 
-/** Meta GET verify: compare token and return challenge on success. */
+function parseButtonPayload(payload: string): { action: string; id: string } | null {
+    const trimmed = payload.trim();
+    const sep = trimmed.indexOf("_");
+    if (sep < 1) return null;
+    return {
+        action: trimmed.slice(0, sep).toLowerCase(),
+        id: trimmed.slice(sep + 1),
+    };
+}
+
+/** Template quick-reply uses type `button`; interactive messages use `interactive.button_reply`. */
+function extractButtonPayload(msg: Record<string, unknown>, type: string): string | null {
+    if (type === "button" && isRecord(msg.button)) {
+        const payload = msg.button.payload;
+        return typeof payload === "string" ? payload : null;
+    }
+
+    if (type === "interactive" && isRecord(msg.interactive)) {
+        const interactive = msg.interactive;
+        if (interactive.type === "button_reply" && isRecord(interactive.button_reply)) {
+            const id = interactive.button_reply.id;
+            return typeof id === "string" ? id : null;
+        }
+    }
+
+    return null;
+}
+
+async function findUserByWhatsAppNumber(from: string) {
+    const variants = numberLookupVariants(from);
+    return prisma.user.findFirst({
+        where: {
+            deletedAt: null,
+            number: { in: variants.length > 0 ? variants : [from] },
+        },
+    });
+}
+
+async function handleButtonAction(
+    from: string,
+    userId: string,
+    action: string,
+    id: string,
+): Promise<void> {
+    await touchConversation(userId, from);
+
+    if (action === "accept" || action === "decline") {
+        await updateTaskAcceptFromWhatsApp(id, from, action);
+        return;
+    }
+
+    if (action === "start" || action === "taskquery" || action === "delay") {
+        await handleStarttaskStatus(id, from, action);
+        return;
+    }
+
+    if (action === "inprogress" || action === "remark" || action === "done") {
+        await handleFollowUp(id, from, action);
+        return;
+    }
+
+    if (action === "ontrack" || action === "no") {
+        await updateFinalDecision(id, from, action);
+        return;
+    }
+
+    if (action === "blocked" || action === "completed" || action === "hold") {
+        await handlePreviousTaskFollowupStatus(id, from, action);
+    }
+}
+
 export const verifyWebhookQuery = (mode: string, token: string, challenge: string) => {
     if (
         mode === "subscribe" && token === VERIFY_WEBHOOK_TOKEN && challenge && challenge.length > 0
@@ -69,13 +140,23 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
     const type = typeof msg.type === "string" ? msg.type : "";
     if (!from || !type) return;
 
-    const user = await prisma.user.findFirst({
-        where: { number: from }
-    })
+    const user = await findUserByWhatsAppNumber(from);
 
     if (!user) {
         await sendMessageOnWhatsapp({ number: from, message: "You are not user in this app please contact Admin or manager" })
         return
+    }
+
+    const buttonPayload = extractButtonPayload(msg, type);
+    if (buttonPayload) {
+        const parsed = parseButtonPayload(buttonPayload);
+        if (!parsed) {
+            logger.warn(`webhook unparseable button payload from=${from} payload=${buttonPayload}`);
+            return;
+        }
+        logger.info(`webhook button from=${from} action=${parsed.action} id=${parsed.id}`);
+        await handleButtonAction(from, user.id, parsed.action, parsed.id);
+        return;
     }
 
     if (type === "text" && isRecord(msg.text)) {
@@ -130,40 +211,6 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
             await notifyAdminError("webhook attendance");
         }
         return;
-    }
-
-    if (type !== "interactive" || !isRecord(msg.interactive)) return;
-
-    const interactive = msg.interactive;
-    if (interactive.type !== "button_reply" || !isRecord(interactive.button_reply)) return;
-
-    const buttonId =
-        typeof interactive.button_reply.id === "string"
-            ? interactive.button_reply.id.toLowerCase().trim()
-            : "";
-
-    const [action, id] = buttonId.split("_")
-    logger.info(`webhook incoming from=${from} message=${action}`);
-
-    await touchConversation(user.id, from)
-
-    if (action === "accept" || action === "decline") {
-        await updateTaskAcceptFromWhatsApp(id, from, action);
-    }
-
-    if (action === "start" || action === "taskquery" || action === "delay") {
-        await handleStarttaskStatus(id, from, action)
-    }
-
-    if (action === "inprogress" || action === "remark" || action === "done") {
-        await handleFollowUp(id, from, action)
-    }
-
-    if (action === "ontrack" || action === "no") {
-        await updateFinalDecision(id, from, action)
-    }
-    if (action === "blocked" || action === "completed" || action === "hold") {
-        await handlePreviousTaskFollowupStatus(id, from, action)
     }
 }
 

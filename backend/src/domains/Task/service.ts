@@ -14,7 +14,7 @@ import {
     sendManagerRemainingStatusMessage,
     sendManagerSummaryofAssisgnMessage,
 } from "../messages/assignTaskMessages";
-import { toStoredIndianWhatsAppNumber } from "../../libraries/util/Task/number";
+import { toStoredIndianWhatsAppNumber, numberLookupVariants } from "../../libraries/util/Task/number";
 import { managerFollowUpFailureMessage, managerFollowUpSummaryMessage, taskremarkresontoManager, userFollowUpTaskMessage } from "../messages/followupMessage";
 import { startTaskEarlyMessage } from "../messages/startTaskMessage";
 import { reasonMessage } from "../messages/reason";
@@ -72,10 +72,11 @@ async function sendPreviousTaskFollowupButtons(
 
 /** WhatsApp task flows only apply to team members (role user), not managers/admins. */
 async function findActiveTaskUserByWhatsAppNumber(number: string) {
+    const variants = numberLookupVariants(number);
     return prisma.user.findFirst({
         where: {
             deletedAt: null,
-            number,
+            number: { in: variants.length > 0 ? variants : [number] },
             role: Role.user,
         },
     });
