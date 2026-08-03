@@ -1,7 +1,7 @@
 import { AcceptStatus, DelayType, Prisma, Provider, Role, TaskStaus, TaskFinalStatus, onTrackStatus } from "@prisma/client";
 import { prisma } from "../../libraries/db";
 import logger from "../../libraries/log/logger";
-import { excelAssignRowSchema, formatExcelRowZodError } from "./request";
+import { excelAssignRowSchema, formatExcelRowZodError, type ExcelAssignRow } from "./request";
 import { AppError } from "../../libraries/error-handling/AppError";
 import { convertUserTimeToMinutes, parseTimeOnDate, shiftRawTimeByMinutes } from "../../libraries/util/Task/timing";
 
@@ -30,7 +30,7 @@ import {
     getISTTomorrowCalendarDate,
     isFutureISTCalendarDate,
 } from "../../libraries/util/Task/istDate";
-import { notifyAdminError } from "../../libraries/util/notifyAdminError";
+import { notifyAdminError, notifyAdminMessage } from "../../libraries/util/notifyAdminError";
 
 type choices = "inprogress" | "remark" | "done"
 type startChoice = "start" | "taskquery" | "delay"
@@ -206,24 +206,82 @@ const clearPendingFollowUp = (userId: string): void => {
     pendingFollowUpByUserId.delete(userId);
 }
 
-function queueWelcomeMessage(number: string, name: string, label: string): void {
-    void sendWhatsappTemplate({
-        number,
-        tname: "welcome_3m",
-        parameters: [{ parameter_name: "user_name", text: name }],
-    })
-        .then((result) => {
-            if (result.success) {
-                logger.info(`createTask welcome sent to ${label} number=${number}`);
-            } else {
-                logger.warn(
-                    `createTask welcome failed for ${label} number=${number} detail=${result.message}`,
+function processImportWelcomeMessagesInBackground(recipients: WelcomeRecipient[]): void {
+    if (recipients.length === 0) {
+        return;
+    }
+
+    void (async () => {
+        let userSuccess = 0;
+        let managerSuccess = 0;
+        let userFailed = 0;
+        let managerFailed = 0;
+
+        for (const recipient of recipients) {
+            const isManager = recipient.label === "new manager";
+
+            try {
+                const result = await sendWhatsappTemplate({
+                    number: recipient.number,
+                    tname: "welcome_3m",
+                    parameters: [{ parameter_name: "user_name", text: recipient.name }],
+                });
+
+                if (result.success) {
+                    if (isManager) {
+                        managerSuccess += 1;
+                    } else {
+                        userSuccess += 1;
+                    }
+                    logger.info(
+                        `createTask welcome sent to ${recipient.label} number=${recipient.number}`,
+                    );
+                } else {
+                    if (isManager) {
+                        managerFailed += 1;
+                    } else {
+                        userFailed += 1;
+                    }
+                    logger.warn(
+                        `createTask welcome failed for ${recipient.label} number=${recipient.number} detail=${result.message}`,
+                    );
+                }
+            } catch (err) {
+                if (isManager) {
+                    managerFailed += 1;
+                } else {
+                    userFailed += 1;
+                }
+                logger.error(
+                    `createTask welcome error for ${recipient.label} number=${recipient.number}`,
+                    err,
                 );
             }
-        })
-        .catch((err) => {
-            logger.error(`createTask welcome error for ${label} number=${number}`, err);
-        });
+        }
+
+        const totalFailed = userFailed + managerFailed;
+
+        if (totalFailed === 0) {
+            const lines = [
+                `${userSuccess}-user`,
+                `${managerSuccess}-manager`,
+                "send welcome messages successfully",
+            ];
+            await notifyAdminMessage(lines.join("\n"));
+            return;
+        }
+
+        const summaryLines = [
+            `${userSuccess}-user`,
+            `${managerSuccess}-manager`,
+            `welcome failed: ${userFailed} user, ${managerFailed} manager`,
+        ];
+        await notifyAdminMessage(summaryLines.join("\n"));
+        await notifyAdminError("createTask welcome messages");
+    })().catch((err) => {
+        logger.error("createTask welcome batch failed", err);
+        void notifyAdminError("createTask welcome messages");
+    });
 }
 
 function groupImportRows(flatRows: TaskImportRow[]): AssignTaskSheetGroup[] {
@@ -313,10 +371,33 @@ export function previewTaskImport(buffer: Buffer): PreviewTaskResult {
     };
 }
 
-async function importTaskGroups(groups: AssignTaskSheetGroup[]): Promise<CreateTaskResult> {
+type PreparedImportGroup = {
+    startRow: number;
+    data: ExcelAssignRow;
+    storeUserNumber: string;
+    storeManagerNumber: string;
+    orderedTasks: Array<{
+        name: string;
+        rawStartTime: string;
+        rawEndTime: string;
+        startAt: Date;
+        endAt: Date;
+        position: number;
+    }>;
+};
+
+type WelcomeRecipient = {
+    number: string;
+    name: string;
+    label: string;
+};
+
+function validateImportGroups(groups: AssignTaskSheetGroup[]): {
+    prepared: PreparedImportGroup[];
+    failedRows: { row: number; reason: string }[];
+} {
     const failedRows: { row: number; reason: string }[] = [];
-    let processed = 0;
-    const welcomedManagers = new Set<string>();
+    const prepared: PreparedImportGroup[] = [];
 
     for (const g of groups) {
         const taskDate = normalizeSheetDate(g.dateRaw);
@@ -358,137 +439,224 @@ async function importTaskGroups(groups: AssignTaskSheetGroup[]): Promise<CreateT
         const data = parsed.data;
         const storeUserNumber = toStoredIndianWhatsAppNumber(data.number);
         const storeManagerNumber = toStoredIndianWhatsAppNumber(data.managerMobile);
-        let isNewUser = false;
-        let isNewManager = false;
 
-        try {
-            await prisma.$transaction(async (tx) => {
-                let manager = await tx.user.findFirst({
-                    where: {
-                        number: storeManagerNumber,
-                        role: Role.manager,
-                        deletedAt: null,
-                    },
+        const tasksWithTime: Array<{
+            name: string;
+            rawStartTime: string;
+            rawEndTime: string;
+            startAt: Date;
+            endAt: Date;
+        }> = [];
+
+        for (const task of data.tasks) {
+            const startAt = parseTimeOnDate(data.date, task.rawStartTime);
+            const endAt = parseTimeOnDate(data.date, task.rawEndTime);
+            if (!startAt || !endAt) {
+                failedRows.push({
+                    row: g.startRow,
+                    reason: `Invalid start/end time for task "${task.name}". Use values like 9am, 11am, 4:25pm, or 16:30.`,
                 });
-
-                if (!manager) {
-                    isNewManager = true;
-                    manager = await tx.user.create({
-                        data: {
-                            name: data.managerName,
-                            number: storeManagerNumber,
-                            role: Role.manager,
-                            provider: Provider.whatsapp,
-                        },
-                    });
-                }
-
-                const existingUser = await tx.user.findFirst({
-                    where: {
-                        deletedAt: null,
-                        role: Role.user,
-                        OR: [
-                            { number: storeUserNumber },
-                            ...(data.email ? [{ email: data.email }] : []),
-                        ],
-                    },
-                });
-
-                let userId: string;
-
-                if (existingUser) {
-                    userId = existingUser.id;
-                    await tx.user.update({
-                        where: { id: existingUser.id },
-                        data: { parentId: manager.id },
-                    });
-                } else {
-                    isNewUser = true;
-                    const created = await createUserWhatsApp({
-                        name: data.name,
-                        number: storeUserNumber,
-                        email: data.email,
-                        parentId: manager.id,
-                        tx,
-                    });
-                    userId = created.id;
-                }
-
-                const dayDate = data.date;
-
-                let dailyTask = await tx.dailyTask.findFirst({
-                    where: {
-                        userId,
-                        date: dayDate,
-                        deletedAt: null,
-                    },
-                });
-
-                if (!dailyTask) {
-                    dailyTask = await tx.dailyTask.create({
-                        data: {
-                            userId,
-                            date: dayDate,
-                        },
-                    });
-                }
-
-                const tasksWithTime = data.tasks.map((task) => {
-                    const startAt = parseTimeOnDate(data.date, task.rawStartTime);
-                    const endAt = parseTimeOnDate(data.date, task.rawEndTime);
-                    if (!startAt || !endAt) {
-                        throw new Error(
-                            `Invalid start/end time for task "${task.name}". Use values like 9am, 11am, 4:25pm, or 16:30.`
-                        );
-                    }
-                    return { ...task, startAt, endAt };
-                });
-
-                const orderedTasks = resolveTaskPositions(tasksWithTime);
-
-                for (const task of orderedTasks) {
-                    await tx.task.create({
-                        data: {
-                            name: task.name,
-                            userId,
-                            dailyTaskId: dailyTask.id,
-                            position: task.position,
-                            status: TaskStaus.notSend,
-                            rawStartTime: task.rawStartTime,
-                            rawEndTime: task.rawEndTime,
-                            startAt: task.startAt,
-                            endAt: task.endAt,
-                        },
-                    });
-                }
+                tasksWithTime.length = 0;
+                break;
+            }
+            tasksWithTime.push({
+                name: task.name,
+                rawStartTime: task.rawStartTime,
+                rawEndTime: task.rawEndTime,
+                startAt,
+                endAt,
             });
-
-            if (isNewManager && !welcomedManagers.has(storeManagerNumber)) {
-                welcomedManagers.add(storeManagerNumber);
-                queueWelcomeMessage(storeManagerNumber, data.managerName, "new manager");
-            }
-
-            if (isNewUser) {
-                queueWelcomeMessage(storeUserNumber, data.name, "new user");
-            }
-
-            processed += 1;
-        } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
-            logger.error(`createTask import failed at sheet row ${g.startRow}`, { name: g.name, error: msg });
-            failedRows.push({ row: g.startRow, reason: msg });
         }
+
+        if (tasksWithTime.length === 0) {
+            continue;
+        }
+
+        prepared.push({
+            startRow: g.startRow,
+            data,
+            storeUserNumber,
+            storeManagerNumber,
+            orderedTasks: resolveTaskPositions(tasksWithTime),
+        });
     }
 
-    const allOk = failedRows.length === 0;
+    return { prepared, failedRows };
+}
+
+async function importTaskGroups(groups: AssignTaskSheetGroup[]): Promise<CreateTaskResult> {
+    const { prepared, failedRows } = validateImportGroups(groups);
+
+    if (failedRows.length > 0) {
+        return {
+            success: false,
+            status: 400,
+            message: `Validation failed for ${failedRows.length} row(s). No users or tasks were created.`,
+            processed: 0,
+            failedRows,
+        };
+    }
+
+    if (prepared.length === 0) {
+        return {
+            success: false,
+            status: 400,
+            message: "No rows to import",
+            processed: 0,
+            failedRows: [{ row: 0, reason: "No rows to import" }],
+        };
+    }
+
+    const welcomeRecipients: WelcomeRecipient[] = [];
+    const welcomedManagers = new Set<string>();
+
+    try {
+        await prisma.$transaction(
+            async (tx) => {
+                const managerByNumber = new Map<string, { id: string; name: string }>();
+
+                for (const item of prepared) {
+                    const { data, storeUserNumber, storeManagerNumber, orderedTasks } = item;
+
+                    let managerId = managerByNumber.get(storeManagerNumber)?.id;
+
+                    if (!managerId) {
+                        const existingManager = await tx.user.findFirst({
+                            where: {
+                                number: storeManagerNumber,
+                                role: Role.manager,
+                                deletedAt: null,
+                            },
+                        });
+
+                        if (existingManager) {
+                            managerId = existingManager.id;
+                            managerByNumber.set(storeManagerNumber, {
+                                id: existingManager.id,
+                                name: existingManager.name,
+                            });
+                        } else {
+                            const createdManager = await tx.user.create({
+                                data: {
+                                    name: data.managerName,
+                                    number: storeManagerNumber,
+                                    role: Role.manager,
+                                    provider: Provider.whatsapp,
+                                },
+                            });
+                            managerId = createdManager.id;
+                            managerByNumber.set(storeManagerNumber, {
+                                id: createdManager.id,
+                                name: data.managerName,
+                            });
+
+                            if (!welcomedManagers.has(storeManagerNumber)) {
+                                welcomedManagers.add(storeManagerNumber);
+                                welcomeRecipients.push({
+                                    number: storeManagerNumber,
+                                    name: data.managerName,
+                                    label: "new manager",
+                                });
+                            }
+                        }
+                    }
+
+                    const existingUser = await tx.user.findFirst({
+                        where: {
+                            deletedAt: null,
+                            role: Role.user,
+                            OR: [
+                                { number: storeUserNumber },
+                                ...(data.email ? [{ email: data.email }] : []),
+                            ],
+                        },
+                    });
+
+                    let userId: string;
+
+                    if (existingUser) {
+                        userId = existingUser.id;
+                        await tx.user.update({
+                            where: { id: existingUser.id },
+                            data: { parentId: managerId },
+                        });
+                    } else {
+                        const created = await createUserWhatsApp({
+                            name: data.name,
+                            number: storeUserNumber,
+                            email: data.email,
+                            parentId: managerId,
+                            tx,
+                        });
+                        userId = created.id;
+                        welcomeRecipients.push({
+                            number: storeUserNumber,
+                            name: data.name,
+                            label: "new user",
+                        });
+                    }
+
+                    const dayDate = data.date;
+
+                    let dailyTask = await tx.dailyTask.findFirst({
+                        where: {
+                            userId,
+                            date: dayDate,
+                            deletedAt: null,
+                        },
+                    });
+
+                    if (!dailyTask) {
+                        dailyTask = await tx.dailyTask.create({
+                            data: {
+                                userId,
+                                date: dayDate,
+                            },
+                        });
+                    }
+
+                    for (const task of orderedTasks) {
+                        await tx.task.create({
+                            data: {
+                                name: task.name,
+                                userId,
+                                dailyTaskId: dailyTask.id,
+                                position: task.position,
+                                status: TaskStaus.notSend,
+                                rawStartTime: task.rawStartTime,
+                                rawEndTime: task.rawEndTime,
+                                startAt: task.startAt,
+                                endAt: task.endAt,
+                            },
+                        });
+                    }
+                }
+            },
+            {
+                maxWait: 10_000,
+                timeout: 120_000,
+            },
+        );
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        logger.error("createTask import transaction failed", { error: msg });
+        return {
+            success: false,
+            status: 400,
+            message: `Import failed. No users or tasks were saved. ${msg}`,
+            processed: 0,
+            failedRows: [{ row: 0, reason: msg }],
+        };
+    }
+
+    processImportWelcomeMessagesInBackground(welcomeRecipients);
+
     return {
-        success: allOk,
-        status: allOk ? 200 : processed > 0 ? 200 : 400,
-        message: allOk
-            ? `Imported ${processed} assignment block(s).`
-            : `Done: ${processed} ok, ${failedRows.length} failed. See failedRows.`,
-        processed,
-        failedRows,
+        success: true,
+        status: 200,
+        message: `Imported ${prepared.length} assignment block(s).`,
+        processed: prepared.length,
+        failedRows: [],
     };
 }
 

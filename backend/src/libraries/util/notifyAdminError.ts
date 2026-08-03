@@ -30,3 +30,20 @@ export async function notifyAdminError(context: string): Promise<void> {
         logger.error(`notifyAdminError failed (context="${context}")`, notifyErr);
     }
 }
+
+/** Notify admin via WhatsApp with an informational message (e.g. import success summary). */
+export async function notifyAdminMessage(message: string): Promise<void> {
+    try {
+        const adminUser = await getAdminUser();
+        if (!adminUser?.number?.trim()) {
+            logger.warn("notifyAdminMessage: admin phone not found");
+            return;
+        }
+        await sendMessageOnWhatsapp({
+            number: adminUser.number,
+            message,
+        });
+    } catch (notifyErr) {
+        logger.error("notifyAdminMessage failed", notifyErr);
+    }
+}
