@@ -33,24 +33,19 @@ export function isWhatsAppWindowOpen(
     return expiresAt.getTime() > now.getTime();
 }
 
-/** True when reminder should be sent (window closed and no reminder already sent for this expiry). */
+/** True when reminder should be sent (24h window closed, and last reminder was 24h+ ago). */
 export function shouldSendManagerReminder(
     conversation: { windowExpiresAt: Date | null; lastOutgoingAt: Date | null } | null,
     now = new Date(),
 ): boolean {
     if (isWhatsAppWindowOpen(conversation, now)) return false;
 
-    if (!conversation) return true;
-
-    const { windowExpiresAt, lastOutgoingAt } = conversation;
-    if (!windowExpiresAt) {
-        return !lastOutgoingAt;
+    const lastReminderAt = conversation?.lastOutgoingAt;
+    if (lastReminderAt && now.getTime() - lastReminderAt.getTime() < DAY_IN_MS) {
+        return false;
     }
 
-    if (windowExpiresAt.getTime() > now.getTime()) return false;
-
-    if (!lastOutgoingAt) return true;
-    return lastOutgoingAt.getTime() <= windowExpiresAt.getTime();
+    return true;
 }
 
 async function sendManagerReminderTemplate(manager: ManagerContact): Promise<boolean> {
