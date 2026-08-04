@@ -1358,7 +1358,7 @@ export const finalDecisionDailyTask = async (): Promise<FinalDecisionResult> => 
             const buttons = [
                 { id: `ontrack_${dailyTask.id}`, title: "on track" },
                 { id: `no_${dailyTask.id}`, title: "remark" },
-                { id: `absent${dailyTask.id}`, title: "Absent" }
+                { id: `absent_${dailyTask.id}`, title: "Absent" }
             ];
 
             const result = await sendWhatsAppButtons({ number: phone, message: body, buttons });
