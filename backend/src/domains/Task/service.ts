@@ -7,14 +7,14 @@ import { convertUserTimeToMinutes, parseTimeOnDate, shiftRawTimeByMinutes } from
 
 import { createUserWhatsApp } from "../auth/service";
 import { groupAssignTaskSheetRows, normalizeSheetDate, readAssignTaskExcelSheetRows, dedupeIdenticalTasks, type AssignTaskSheetGroup } from "../../libraries/util/Task/readfromxl";
-import { sendMessageOnWhatsapp, sendWhatsAppButtons, sendWhatsappTemplate } from "../whtsapp/sendWhatsApp";
+import { sendMessageOnWhatsapp, sendWhatsAppButtons, sendWhatsappTemplate, normalizeWhatsAppNumber } from "../whtsapp/sendWhatsApp";
 import {
     sendAssignTaskMessage,
     formatAssignTaskListForTemplate,
     sendManagerRemainingStatusMessage,
     sendManagerSummaryofAssisgnMessage,
 } from "../messages/assignTaskMessages";
-import { toStoredIndianWhatsAppNumber, numberLookupVariants } from "../../libraries/util/Task/number";
+import { toStoredIndianWhatsAppNumber } from "../../libraries/util/Task/number";
 import { managerFollowUpFailureMessage, managerFollowUpSummaryMessage, taskremarkresontoManager, userFollowUpTaskMessage } from "../messages/followupMessage";
 import { startTaskEarlyMessage } from "../messages/startTaskMessage";
 import { reasonMessage } from "../messages/reason";
@@ -72,11 +72,13 @@ async function sendPreviousTaskFollowupButtons(
 
 /** WhatsApp task flows only apply to team members (role user), not managers/admins. */
 async function findActiveTaskUserByWhatsAppNumber(number: string) {
-    const variants = numberLookupVariants(number);
+    const normalized = normalizeWhatsAppNumber(number);
+    if (!normalized) return null;
+
     return prisma.user.findFirst({
         where: {
             deletedAt: null,
-            number: { in: variants.length > 0 ? variants : [number] },
+            number: normalized,
             role: Role.user,
         },
     });
@@ -1109,20 +1111,31 @@ export const updateTaskAcceptFromWhatsApp = async (
     whatsappFrom: string,
     choice: "accept" | "decline",
 ): Promise<void> => {
+    if (!id.trim()) {
+        logger.warn(`accept/decline: missing dailyTask id from=${whatsappFrom}`);
+        return;
+    }
+
     const user = await findActiveTaskUserByWhatsAppNumber(whatsappFrom);
     if (!user) {
         logger.info(`Daily Task no user for from=${whatsappFrom}`);
         return;
     }
 
+    const dailyTask = await prisma.dailyTask.findFirst({
+        where: { id, userId: user.id, deletedAt: null },
+    });
+    if (!dailyTask) {
+        logger.warn(`accept/decline: dailyTask not found id=${id} userId=${user.id}`);
+        return;
+    }
+
     const choiceResult = choice === "accept" ? AcceptStatus.accept : AcceptStatus.decline;
 
-    const dailyTask = await prisma.dailyTask.update({
-        where: { id },
-        data: {
-            status: choiceResult
-        }
-    })
+    await prisma.dailyTask.update({
+        where: { id: dailyTask.id },
+        data: { status: choiceResult },
+    });
 
     if (choiceResult === AcceptStatus.accept) {
         await sendMessageOnWhatsapp({ number: user.number, message: "Thanks for Accept the tasks" })

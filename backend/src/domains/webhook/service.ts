@@ -15,11 +15,10 @@ import logger from "../../libraries/log/logger";
 import dotenv from "dotenv";
 import { attendence } from "../attendence/service";
 import { prisma } from "../../libraries/db";
-import { sendMessageOnWhatsapp } from "../../domains/whtsapp/sendWhatsApp";
+import { sendMessageOnWhatsapp, normalizeWhatsAppNumber } from "../../domains/whtsapp/sendWhatsApp";
 import { touchConversation } from "../../domains/conversation/service";
 import { notifyDashboardUpdate } from "../../libraries/realtime";
 import { notifyAdminError } from "../../libraries/util/notifyAdminError";
-import { numberLookupVariants } from "../../libraries/util/Task/number";
 
 dotenv.config();
 
@@ -89,11 +88,13 @@ function extractButtonPayload(msg: Record<string, unknown>, type: string): strin
 }
 
 async function findUserByWhatsAppNumber(from: string) {
-    const variants = numberLookupVariants(from);
+    const normalized = normalizeWhatsAppNumber(from);
+    if (!normalized) return null;
+
     return prisma.user.findFirst({
         where: {
             deletedAt: null,
-            number: { in: variants.length > 0 ? variants : [from] },
+            number: normalized,
         },
     });
 }
@@ -183,23 +184,23 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
         logger.info(`incoming msg from = ${from} message = ${textBody}`);
 
         if (textBody.toLowerCase() === "update") {
-            await handlePendigTaskUpdateText(from);
+            await handlePendigTaskUpdateText(user.number);
             return;
         }
-        
-        const declineSaved = await handleDeclineReason(from, textBody);
+
+        const declineSaved = await handleDeclineReason(user.number, textBody);
         if (declineSaved) return;
 
-        const finalRemarkSaved = await handleFinalDecisionRemarkReason(from, textBody);
+        const finalRemarkSaved = await handleFinalDecisionRemarkReason(user.number, textBody);
         if (finalRemarkSaved) return;
 
-        const startTaskdelay = await handleStartTaskDelayTime(from, textBody)
-        if (startTaskdelay) return
+        const startTaskdelay = await handleStartTaskDelayTime(user.number, textBody);
+        if (startTaskdelay) return;
 
-        const followUpSaved = await handleFollowUpReply(from, textBody);
+        const followUpSaved = await handleFollowUpReply(user.number, textBody);
         if (followUpSaved) return;
 
-        const finalAbsentSaved = await handleFinalDecisionAbsentReason(from, textBody)
+        const finalAbsentSaved = await handleFinalDecisionAbsentReason(user.number, textBody);
         if (finalAbsentSaved) return;
 
         return;
@@ -220,7 +221,7 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
         logger.info(`webhook location from=${from} lat=${latitude} long=${longitude}`);
 
         try {
-            await attendence(from, latitude, longitude);
+            await attendence(user.number, latitude, longitude);
         } catch (err) {
             logger.error(`webhook attendance failed from=${from}`, err);
             await notifyAdminError("webhook attendance");
