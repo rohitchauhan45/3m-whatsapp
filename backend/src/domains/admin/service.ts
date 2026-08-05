@@ -6,6 +6,28 @@ import { readCronjob } from "../../scheduler";
 import { isMinuteSettingName, parsePositiveMinutes } from "../../constants/cronSettings";
 import { Role } from "@prisma/client";
 import { notifyAdminError } from "../../libraries/util/notifyAdminError";
+import {
+    addCalendarDays,
+    formatCalendarDateLabel,
+    getISTCalendarParts,
+    getISTTodayCalendarDate,
+    getUTCDateParts,
+} from "../../libraries/util/Task/istDate";
+
+function taskCalendarDateKey(date: Date): string {
+    const { y, m, d } = getUTCDateParts(date);
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function istTodayKey(now = new Date()): string {
+    const { y, m, d } = getISTCalendarParts(now);
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function istYesterdayKey(now = new Date()): string {
+    const yesterday = addCalendarDays(getISTTodayCalendarDate(now), -1);
+    return taskCalendarDateKey(yesterday);
+}
 
 interface cronjobData {
     name: string,
@@ -34,9 +56,13 @@ export type ManagerTasksResult = {
 export const getAllTasksByDate = async () => {
     try {
         const tasks = await prisma.task.findMany({
-            where: { deletedAt: null },
-            orderBy: { createdAt: "desc" },
+            where: {
+                deletedAt: null,
+                dailyTask: { deletedAt: null },
+            },
+            orderBy: { startAt: "asc" },
             include: {
+                dailyTask: { select: { date: true } },
                 user: {
                     select: {
                         id: true,
@@ -49,16 +75,21 @@ export const getAllTasksByDate = async () => {
         });
 
         const dayMap = new Map<string, {
-            date: string;
+            taskDate: Date;
             tasks: typeof tasks;
             users: Set<string>;
             managers: Set<string>;
         }>();
 
         for (const task of tasks) {
-            const dateKey = task.createdAt.toISOString().slice(0, 10);
+            const dateKey = taskCalendarDateKey(task.dailyTask.date);
             if (!dayMap.has(dateKey)) {
-                dayMap.set(dateKey, { date: dateKey, tasks: [], users: new Set(), managers: new Set() });
+                dayMap.set(dateKey, {
+                    taskDate: task.dailyTask.date,
+                    tasks: [],
+                    users: new Set(),
+                    managers: new Set(),
+                });
             }
             const day = dayMap.get(dateKey)!;
             day.tasks.push(task);
@@ -66,31 +97,30 @@ export const getAllTasksByDate = async () => {
             if (task.user.parent) day.managers.add(task.user.parent.id);
         }
 
-        const today = new Date().toISOString().slice(0, 10);
-        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-
-        const formatDate = (iso: string) => {
-            const dt = new Date(iso);
-            return `${dt.getDate()}-${dt.toLocaleString("en", { month: "short" }).toLowerCase()}`;
-        };
+        const today = istTodayKey();
+        const yesterday = istYesterdayKey();
 
         const days = Array.from(dayMap.values())
-            .sort((a, b) => b.date.localeCompare(a.date))
-            .map((d) => ({
-                date: formatDate(d.date),
-                label: d.date === today ? "Today" : d.date === yesterday ? "Yesterday" : formatDate(d.date),
-                taskCount: d.tasks.length,
-                userCount: d.users.size,
-                managerCount: d.managers.size,
-                tasks: d.tasks.map((t) => ({
-                    id: t.id,
-                    name: t.name,
-                    status: t.status,
-                    completedByTime: t.endAt.toISOString(),
-                    userName: t.user.name,
-                    managerName: t.user.parent?.name || "—",
-                })),
-            }));
+            .sort((a, b) => taskCalendarDateKey(b.taskDate).localeCompare(taskCalendarDateKey(a.taskDate)))
+            .map((d) => {
+                const dateKey = taskCalendarDateKey(d.taskDate);
+                const dateLabel = formatCalendarDateLabel(d.taskDate);
+                return {
+                    date: dateLabel,
+                    label: dateKey === today ? "Today" : dateKey === yesterday ? "Yesterday" : dateLabel,
+                    taskCount: d.tasks.length,
+                    userCount: d.users.size,
+                    managerCount: d.managers.size,
+                    tasks: d.tasks.map((t) => ({
+                        id: t.id,
+                        name: t.name,
+                        status: t.status,
+                        completedByTime: t.endAt.toISOString(),
+                        userName: t.user.name,
+                        managerName: t.user.parent?.name || "—",
+                    })),
+                };
+            });
 
         return { success: true, status: 200, message: "OK", days };
     } catch (error: any) {
@@ -108,8 +138,12 @@ export async function getManagerTasks(managerId: string): Promise<ManagerTasksRe
                 where: { deletedAt: null },
                 include: {
                     tasks: {
-                        where: { deletedAt: null },
-                        orderBy: { createdAt: "desc" },
+                        where: {
+                            deletedAt: null,
+                            dailyTask: { deletedAt: null },
+                        },
+                        include: { dailyTask: { select: { date: true } } },
+                        orderBy: { startAt: "asc" },
                     },
                 },
             },
@@ -120,34 +154,42 @@ export async function getManagerTasks(managerId: string): Promise<ManagerTasksRe
         return { success: false, status: 404, message: "Manager not found", days: [] };
     }
 
-    const tasksByDay = new Map<string, ManagerTasksResult["days"][number]["tasks"]>();
+    const tasksByDay = new Map<string, {
+        taskDate: Date;
+        tasks: ManagerTasksResult["days"][number]["tasks"];
+    }>();
 
     for (const child of manager.children) {
         for (const task of child.tasks) {
-            const dateKey = task.createdAt.toISOString().slice(0, 10);
-            if (!tasksByDay.has(dateKey)) tasksByDay.set(dateKey, []);
-            tasksByDay.get(dateKey)!.push({
+            const dateKey = taskCalendarDateKey(task.dailyTask.date);
+            if (!tasksByDay.has(dateKey)) {
+                tasksByDay.set(dateKey, { taskDate: task.dailyTask.date, tasks: [] });
+            }
+            tasksByDay.get(dateKey)!.tasks.push({
                 id: task.id,
                 name: task.name,
                 status: task.status,
-          
                 completedByTime: task.endAt.toISOString(),
                 user: { id: child.id, name: child.name, number: child.number },
             });
         }
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const today = istTodayKey();
+    const yesterday = istYesterdayKey();
 
-    const days = Array.from(tasksByDay.entries())
-        .sort((a, b) => b[0].localeCompare(a[0]))
-        .map(([date, tasks]) => ({
-            date,
-            label: date === today ? "Today" : date === yesterday ? "Yesterday" : date,
-            taskCount: tasks.length,
-            tasks,
-        }));
+    const days = Array.from(tasksByDay.values())
+        .sort((a, b) => taskCalendarDateKey(b.taskDate).localeCompare(taskCalendarDateKey(a.taskDate)))
+        .map((entry) => {
+            const dateKey = taskCalendarDateKey(entry.taskDate);
+            const dateLabel = formatCalendarDateLabel(entry.taskDate);
+            return {
+                date: dateLabel,
+                label: dateKey === today ? "Today" : dateKey === yesterday ? "Yesterday" : dateLabel,
+                taskCount: entry.tasks.length,
+                tasks: entry.tasks,
+            };
+        });
 
     return { success: true, status: 200, message: "OK", days };
 }
