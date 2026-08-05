@@ -76,7 +76,7 @@ function buildUserTableStatusWhere(
     }
 }
 
-export const taskCardDetails = async (time: timeRange) => {
+export const taskCardDetails = async (time: timeRange, managerId?: string) => {
     try {
         const dateFilter = convertTimeRangeintoDate(time);
         const baseWhere: Prisma.TaskWhereInput = {
@@ -85,9 +85,12 @@ export const taskCardDetails = async (time: timeRange) => {
             dailyTask: {
                 deletedAt: null,
             },
-        }
+            ...(managerId
+                ? { user: { parentId: managerId, deletedAt: null } }
+                : {}),
+        };
 
-        const [inProgress, delayed, complete, remark, cancelled, totaltask] = await Promise.all([
+        const [inProgress, delayed, complete, remark, cancelled, pending, totaltask] = await Promise.all([
             prisma.task.count({
                 where: {
                     ...baseWhere,
@@ -102,6 +105,9 @@ export const taskCardDetails = async (time: timeRange) => {
             prisma.task.count({ where: { ...baseWhere, finaldecision: null, status: TaskStaus.remark } }),
             prisma.task.count({ where: { ...baseWhere, finaldecision: TaskFinalStatus.cancelled } }),
             prisma.task.count({
+                where: { ...baseWhere, finaldecision: null, status: TaskStaus.notSend },
+            }),
+            prisma.task.count({
                 where: {
                     ...baseWhere,
                     OR: [{ status: { notIn: [TaskStaus.deleted] } }],
@@ -115,6 +121,7 @@ export const taskCardDetails = async (time: timeRange) => {
             complete,
             remarkTask: remark,
             cancelledTask: cancelled,
+            pendingTask: pending,
             totalTask: totaltask,
         };
 
@@ -273,12 +280,15 @@ export const taskTable = async (
     }   
 };
 
-export const userCardDetails = async (time: timeRange) => {
+export const userCardDetails = async (time: timeRange, managerId?: string) => {
     try {
         const dateFilter = convertTimeRangeintoDate(time);
         const dailyTaskBase: Prisma.DailyTaskWhereInput = {
             deletedAt: null,
             date: dateFilter,
+            ...(managerId
+                ? { user: { parentId: managerId, deletedAt: null } }
+                : {}),
         };
 
         const [accept, decline, remaining, attented, usersInRange] = await Promise.all([
@@ -295,6 +305,9 @@ export const userCardDetails = async (time: timeRange) => {
                     type: "morning",
                     deletedAt: null,
                     createdAt: dateFilter,
+                    ...(managerId
+                        ? { user: { parentId: managerId, deletedAt: null } }
+                        : {}),
                 },
             }),
             prisma.dailyTask.findMany({

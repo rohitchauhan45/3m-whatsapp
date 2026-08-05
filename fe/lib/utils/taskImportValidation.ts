@@ -1,9 +1,11 @@
 import type { TaskPreviewRow } from '@/lib/services/taskService';
+import {
+  formatCalendarDateLabel,
+  getISTTodayCalendarDate,
+} from '@/lib/utils/taskTabDate';
 
 export const INDIAN_MOBILE_10_ERROR =
   'number must be exactly 10 digits starting with 6, 7, 8, or 9 (without country code 91)';
-
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
 export function digitsOnlyPhone(raw: string): string {
   return raw.replace(/\D/g, '');
@@ -13,7 +15,7 @@ export function isValidIndianMobile10(digits: string): boolean {
   return /^[6-9]\d{9}$/.test(digits);
 }
 
-/** `DD-MM-YYYY` for API ↔ `YYYY-MM-DD` for `<input type="date">`. */
+/** `DD-MM-YYYY` (backend / preview) ↔ `YYYY-MM-DD` for `<input type="date">`. */
 export function taskDateToInputValue(date: string): string {
   const match = date.trim().match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
   if (!match) return '';
@@ -41,18 +43,6 @@ function parseTaskDate(dateStr: string): Date | null {
     return null;
   }
   return dt;
-}
-
-function getISTTodayCalendarDate(now = new Date()): Date {
-  const shifted = new Date(now.getTime() + IST_OFFSET_MS);
-  return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()));
-}
-
-function formatCalendarDateLabel(date: Date): string {
-  const d = date.getUTCDate();
-  const m = date.getUTCMonth() + 1;
-  const y = date.getUTCFullYear();
-  return `${String(d).padStart(2, '0')}-${String(m).padStart(2, '0')}-${y}`;
 }
 
 export function validateTaskDate(date: string): string | null {
@@ -114,6 +104,54 @@ export type PreviewValidationResult = {
 
 export function getSharedPreviewDate(rows: TaskPreviewRow[]): string {
   return rows.find((row) => row.date?.trim())?.date?.trim() ?? '';
+}
+
+/** Copy the header task date onto rows that were added without one (e.g. "+ Add task"). */
+export function ensurePreviewRowsHaveSharedDate<T extends TaskPreviewRow>(rows: T[]): T[] {
+  const sharedDate = getSharedPreviewDate(rows);
+  if (!sharedDate) return rows;
+
+  let changed = false;
+  const next = rows.map((row) => {
+    if (row.date?.trim()) return row;
+    changed = true;
+    return { ...row, date: sharedDate };
+  });
+
+  return changed ? next : rows;
+}
+
+/** Draft save only needs user name + task name; other fields are optional. */
+export function validateDraftPreviewRows(rows: TaskPreviewRow[]): PreviewValidationResult {
+  const errors: string[] = [];
+
+  if (rows.length === 0) {
+    return { valid: false, errors: ['Add at least one task row.'] };
+  }
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const userLabel = row.name.trim() || `User ${index + 1}`;
+    const taskLabel = row.taskName.trim() || `task ${index + 1}`;
+    const label = `${userLabel} — ${taskLabel}`;
+
+    if (!row.name.trim()) {
+      errors.push(`${userLabel}: name is required.`);
+    }
+
+    if (!row.taskName.trim()) {
+      errors.push(`${label}: task name is required.`);
+    }
+
+    if (row.number.trim()) {
+      const digits = digitsOnlyPhone(row.number);
+      if (!isValidIndianMobile10(digits)) {
+        errors.push(`${userLabel}: ${INDIAN_MOBILE_10_ERROR}`);
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
 }
 
 export function validatePreviewRows(rows: TaskPreviewRow[]): PreviewValidationResult {

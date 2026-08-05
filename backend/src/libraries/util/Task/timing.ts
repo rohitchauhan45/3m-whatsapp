@@ -25,6 +25,35 @@ export const isTaskStartDueEarly = (
     return isTaskStartNow(sendAt, now);
 };
 
+/** Fixed IST slots for hourly follow-up (11am, 1pm, 4pm, 6pm). */
+export const HOURLY_FOLLOW_UP_SLOTS = [
+    { hour: 11, minute: 0 },
+    { hour: 13, minute: 0 },
+    { hour: 16, minute: 0 },
+    { hour: 18, minute: 0 },
+] as const;
+
+/** Cron expressions (minute hour * * *) for each hourly follow-up slot in IST. */
+export const HOURLY_FOLLOW_UP_CRON_SCHEDULES = HOURLY_FOLLOW_UP_SLOTS.map(
+    (slot) => `${slot.minute} ${slot.hour} * * *`,
+);
+
+const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Hourly follow-up window: task started at least 2h ago and ends at least 2h from now.
+ * e.g. at 11am → start <= 9am and end >= 1pm.
+ */
+export const isTaskDueForHourlyFollowUp = (
+    startAt: Date,
+    endAt: Date,
+    now = new Date(),
+): boolean => {
+    const earliestStart = now.getTime() - TWO_HOURS_MS;
+    const latestEnd = now.getTime() + TWO_HOURS_MS;
+    return startAt.getTime() <= earliestStart && endAt.getTime() >= latestEnd;
+};
+
 export const parseTimeOnDate = (baseDate: Date, raw: string): Date | null => {
     const value = raw.trim().toLowerCase();
     if (!value) return null;

@@ -168,6 +168,12 @@ function finalizeAssignTaskGroup(group: AssignTaskSheetGroup | null): AssignTask
     return { ...group, tasks };
 }
 
+export type AssignTaskReadMode = "full" | "draft";
+
+export type AssignTaskReadOptions = {
+    mode?: AssignTaskReadMode;
+};
+
 /** Normalized keys allowed in assignTask.xlsx (no aliases like `names` or `username`). */
 const ALLOWED_HEADER_KEYS = new Set([
     "date",
@@ -183,13 +189,20 @@ const ALLOWED_HEADER_KEYS = new Set([
 
 /**
  * Validates the first data row's keys (sheet headers). Returns an error message or null if ok.
+ * Draft mode only requires `name` and `task` (date, number, start, end are optional).
  */
-export function validateAssignTaskSheetHeaders(sampleRow: Record<string, unknown>): string | null {
+export function validateAssignTaskSheetHeaders(
+    sampleRow: Record<string, unknown>,
+    options: AssignTaskReadOptions = {},
+): string | null {
     const keys = Object.keys(sampleRow);
     if (keys.length === 0) {
         return "Sheet has no column headers";
     }
-    const required = ["date", "name", "number", "task", "start", "end", "managername", "managermobile"] as const;
+    const required =
+        options.mode === "draft"
+            ? (["name", "task"] as const)
+            : (["date", "name", "number", "task", "start", "end", "managername", "managermobile"] as const);
     const seen = new Set<string>();
     for (const k of keys) {
         if (isIgnorableSheetColumn(k)) continue;
@@ -235,7 +248,11 @@ function rowIsBlank(row: Record<string, unknown>): boolean {
  * - Next rows: only extra tasks (+ start/end) until blank row or next name+number.
  * - Empty rows between users are ignored (visual separators only).
  */
-export function groupAssignTaskSheetRows(rows: Record<string, unknown>[]): AssignTaskSheetGroup[] {
+export function groupAssignTaskSheetRows(
+    rows: Record<string, unknown>[],
+    options: AssignTaskReadOptions = {},
+): AssignTaskSheetGroup[] {
+    const draftMode = options.mode === "draft";
     const groups: AssignTaskSheetGroup[] = [];
     let current: AssignTaskSheetGroup | null = null;
     /** Carried from the first non-empty `date` cell in the sheet. */
@@ -269,7 +286,7 @@ export function groupAssignTaskSheetRows(rows: Record<string, unknown>[]): Assig
         const rowManagerMobile = normalizePhone(mapGetExact(map, "manager mobile"));
         if (rowManagerName) sheetManagerName = rowManagerName;
         if (rowManagerMobile) sheetManagerMobile = rowManagerMobile;
-        const hasAnchor = name.length > 0 && number.length > 0;
+        const hasAnchor = draftMode ? name.length > 0 : name.length > 0 && number.length > 0;
 
         if (hasAnchor) {
             const finalized = finalizeAssignTaskGroup(current);
@@ -299,7 +316,10 @@ export type ReadAssignTaskSheetResult =
     | { ok: true; rows: Record<string, unknown>[] }
     | { ok: false; message: string; status: number };
 
-export function readAssignTaskExcelSheetRows(buffer: Buffer): ReadAssignTaskSheetResult {
+export function readAssignTaskExcelSheetRows(
+    buffer: Buffer,
+    options: AssignTaskReadOptions = {},
+): ReadAssignTaskSheetResult {
     // Keep raw Excel serial numbers — cellDates:true converts to JS Date in server timezone and shifts the day.
     const wb = XLSX.read(buffer, { type: "buffer", cellDates: false });
     const sheetName = wb.SheetNames[0];
@@ -320,7 +340,7 @@ export function readAssignTaskExcelSheetRows(buffer: Buffer): ReadAssignTaskShee
         };
     }
 
-    const headerErr = validateAssignTaskSheetHeaders(rawRows[0]);
+    const headerErr = validateAssignTaskSheetHeaders(rawRows[0], options);
     if (headerErr) {
         return { ok: false, message: headerErr, status: 400 };
     }

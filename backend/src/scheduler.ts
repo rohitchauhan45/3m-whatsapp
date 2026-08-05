@@ -10,25 +10,30 @@ import {
     sendTaskFollowUp,
 } from "./domains/Task/service";
 import { AcceptStatus, TaskFinalStatus, TaskStaus } from "@prisma/client";
-import { isTaskStartDueEarly, isTaskStartNow } from "./libraries/util/Task/timing";
+import { isTaskStartDueEarly, isTaskStartNow, isTaskDueForHourlyFollowUp, HOURLY_FOLLOW_UP_CRON_SCHEDULES } from "./libraries/util/Task/timing";
 import {
     CRON_SETTING_NAMES,
     DEFAULT_REMAINING_STATUS_DELAY_MIN,
-    DEFAULT_START_TASK_EARLY_MIN,                                                
+    DEFAULT_START_TASK_EARLY_MIN,
     resolveCronSetting,
     resolveMinuteSetting,
 } from "./constants/cronSettings";
 import { notifyDashboardUpdate } from "./libraries/realtime";
 import { notifyAdminError } from "./libraries/util/notifyAdminError";
 import { sendManagerWindowReminders } from "./domains/conversation/service";
+import { sendEndOfDaySummaries } from "./domains/admin/Dashboard/endOfDaySummary";
 
 let assignJob: CronJob | null = null;
 let followUpJob: CronJob | null = null;
+let hourlyFollowUpJobs: CronJob[] = [];
 let onTrackJob: CronJob | null = null;
+let endOfDaySummaryJob: CronJob | null = null;
 let remainingStatusTimeout: NodeJS.Timeout | null = null;
 
 const DEFAULT_ASSIGN_TIME = "0 21 * * *";
 const DEFAULT_ONTRACK_TIME = "0 7 * * *";
+/** Daily end-of-day summary for managers and admin at 10:00 PM IST. */
+const END_OF_DAY_SUMMARY_CRON = "0 22 * * *";
 /** Every minute between 8:00 AM and 9:59 PM IST (off overnight to reduce load). */
 const FOLLOWUP_CRON_SCHEDULE = "* 8-21 * * *";
 
@@ -110,6 +115,35 @@ export async function getDueFollowUpTaskIds(managerId?: string): Promise<string[
     return tasks.filter((t) => isTaskStartNow(t.endAt, now)).map((t) => t.id);
 }
 
+export async function getDueHourlyFollowUpTaskIds(managerId?: string): Promise<string[]> {
+    const now = new Date();
+
+    const tasks = await prisma.task.findMany({
+        where: {
+            deletedAt: null,
+            OR: [
+                { status: { notIn: [TaskStaus.notSend, TaskStaus.deleted] } },
+                { finaldecision: { notIn: [TaskFinalStatus.cancelled, TaskFinalStatus.completed] } }
+            ],
+            dailyTask: {
+                deletedAt: null,
+                sent: true,
+                status: AcceptStatus.accept,
+                finaldecision: { in: ["onTrack", "remark"] }
+            },
+            user: {
+                deletedAt: null,
+                ...(managerId ? { parentId: managerId } : {}),
+            },
+        },
+        select: { id: true, startAt: true, endAt: true },
+    });
+
+    return tasks
+        .filter((t) => isTaskDueForHourlyFollowUp(t.startAt, t.endAt, now))
+        .map((t) => t.id);
+}
+
 export async function getDueStartTaskIds(type: tastsendType, managerId?: string): Promise<string[]> {
     const now = new Date();
     const tasks = await prisma.task.findMany({
@@ -146,6 +180,30 @@ export async function getDueStartTaskIds(type: tastsendType, managerId?: string)
     return [];
 }
 
+async function runEndOfDaySummary() {
+    logger.info("cron Starting end-of-day summary");
+    try {
+        const result = await sendEndOfDaySummaries();
+        logger.info(`cron end-of-day summary done: ${result.message}`);
+    } catch (err) {
+        logger.error("cron end-of-day summary failed", err);
+        await notifyAdminError("cron end-of-day summary");
+    }
+}
+
+async function runHourlyFollowUpForAll() {
+    logger.info("cron Starting hourly follow-up (fixed slot)");
+    try {
+        const hourlyFollowUpTaskIds = await getDueHourlyFollowUpTaskIds();
+        const hourlyFollowUpResult = await sendTaskFollowUp(hourlyFollowUpTaskIds, "hourly");
+        logger.info(`cron hourly followUp done: ${hourlyFollowUpResult.message}`);
+        notifyDashboardUpdate();
+    } catch (err) {
+        logger.error("cron hourly follow-up failed", err);
+        await notifyAdminError("cron hourly follow-up");
+    }
+}
+
 async function runFollowUpForAll() {
     logger.info("cron Starting start/follow-up for due tasks");
     try {
@@ -164,8 +222,8 @@ async function runFollowUpForAll() {
         logger.info(`cron start on-time with simple mode task done: ${startOnTimeResult.message}`);
 
         const followUpTaskIds = await getDueFollowUpTaskIds();
-        const followUpResult = await sendTaskFollowUp(followUpTaskIds);
-        logger.info(`cron followUp done: ${followUpResult.message}`);
+        const followUpResult = await sendTaskFollowUp(followUpTaskIds, "endtime");
+        logger.info(`cron endtime followUp done: ${followUpResult.message}`);
 
         const holdReminderResult = await sendPreviousTaskHoldReminders();
         logger.info(`cron previous-task hold reminders done: ${holdReminderResult.message}`);
@@ -189,7 +247,12 @@ export async function startCronJobs() {
 export async function readCronjob() {
     if (assignJob) { assignJob.stop(); assignJob = null; }
     if (followUpJob) { followUpJob.stop(); followUpJob = null; }
+    for (const job of hourlyFollowUpJobs) {
+        job.stop();
+    }
+    hourlyFollowUpJobs = [];
     if (onTrackJob) { onTrackJob.stop(); onTrackJob = null; }
+    if (endOfDaySummaryJob) { endOfDaySummaryJob.stop(); endOfDaySummaryJob = null; }
     if (remainingStatusTimeout) { clearTimeout(remainingStatusTimeout); remainingStatusTimeout = null; }
 
     let assignTime = DEFAULT_ASSIGN_TIME;
@@ -228,7 +291,18 @@ export async function readCronjob() {
         `cron Follow-up scheduled every minute 8:00 AM --> 9:59 PM IST (${FOLLOWUP_CRON_SCHEDULE}; start tasks send ${startTaskEarlyMs / 60_000} min before startAt)`,
     );
 
+    for (const schedule of HOURLY_FOLLOW_UP_CRON_SCHEDULES) {
+        const job = new CronJob(schedule, runHourlyFollowUpForAll, null, true, "Asia/Kolkata");
+        job.start();
+        hourlyFollowUpJobs.push(job);
+        logger.info(`cron Hourly follow-up scheduled: ${schedule} IST`);
+    }
+
     onTrackJob = new CronJob(onTrackTime, runFinalDecisionForAll, null, true, "Asia/Kolkata");
     onTrackJob.start();
     logger.info(`cron Final decision (on track) scheduled: ${onTrackTime}`);
+
+    endOfDaySummaryJob = new CronJob(END_OF_DAY_SUMMARY_CRON, runEndOfDaySummary, null, true, "Asia/Kolkata");
+    endOfDaySummaryJob.start();
+    logger.info(`cron End-of-day summary scheduled: ${END_OF_DAY_SUMMARY_CRON} IST`);
 }

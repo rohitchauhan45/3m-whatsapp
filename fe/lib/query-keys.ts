@@ -3,6 +3,7 @@ import type { TimeRange } from '@/lib/services/dashboardService';
 
 export const queryKeys = {
   adminTasks: ['admin-tasks'] as const,
+  draftTasks: ['draft-tasks'] as const,
   cronjobs: ['cronjobs'] as const,
   dashboard: {
     root: ['dashboard'] as const,
@@ -28,6 +29,13 @@ export function invalidateDashboardQueries(queryClient: QueryClient) {
 export function invalidateAdminTasks(queryClient: QueryClient) {
   return queryClient.refetchQueries({
     queryKey: queryKeys.adminTasks,
+    type: 'active',
+  });
+}
+
+export function invalidateDraftTasks(queryClient: QueryClient) {
+  return queryClient.refetchQueries({
+    queryKey: queryKeys.draftTasks,
     type: 'active',
   });
 }

@@ -1,11 +1,11 @@
 import { TaskStaus, TaskFinalStatus, onTrackStatus } from "@prisma/client";
 
-type taskchoice = "inprogress" | "remark" | "done"
+type taskchoice = "inphourly" | "inpendtime" | "remark" | "done"
 type dailyTaskChoice = "ontrack" | "no" | "absent"
 type startChoice = "start" | "taskquery" | "delay"
 
 export const normalizeChoiceforTaskfollowUp = (choice: taskchoice) => {
-    if (choice === "inprogress") {
+    if (choice === "inphourly" || choice === "inpendtime") {
         return TaskStaus.inProgress
     }
     if (choice === "remark") {

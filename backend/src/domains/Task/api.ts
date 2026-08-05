@@ -229,7 +229,7 @@ export const routes = (): Router => {
                     return;
                 }
                 const taskIds = await getDueFollowUpTaskIds(managerId.trim());
-                const result = await sendTaskFollowUp(taskIds);
+                const result = await sendTaskFollowUp(taskIds, "endtime");
                 return res.status(result.status).json(result);
             } catch (error) {
                 next(error);

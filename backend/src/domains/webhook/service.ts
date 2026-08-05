@@ -123,7 +123,7 @@ async function handleButtonAction(
         return;
     }
 
-    if (action === "inprogress" || action === "remark" || action === "done") {
+    if (action === "inphourly" || action === "inpendtime" || action === "remark" || action === "done") {
         await handleFollowUp(id, storedNumber, action);
         return;
     }

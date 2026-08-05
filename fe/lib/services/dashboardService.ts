@@ -128,33 +128,12 @@ type UserTableQuery = {
   status?: UserStatusFilter;
 };
 
-const SHORT_MONTHS = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'June',
-  'July',
-  'Aug',
-  'Sept',
-  'Oct',
-  'Nov',
-  'Dec',
-] as const;
-
 /** Show date column for multi-day ranges (not today / tomorrow / yesterday). */
 export function showsDateColumn(time: TimeRange): boolean {
   return time !== 'today' && time !== 'tomorrow' && time !== 'yesterday';
 }
 
-/** e.g. 1Jan, 13May, 30June — calendar day as stored (UTC date parts). */
-export function formatShortDisplayDate(iso: string | Date): string {
-  const d = typeof iso === 'string' ? new Date(iso) : iso;
-  const day = d.getUTCDate();
-  const month = SHORT_MONTHS[d.getUTCMonth()] ?? '';
-  return `${day}${month}`;
-}
+export { formatShortDisplayDate } from '@/lib/utils/taskTabDate';
 
 export async function fetchTaskCards(time: TimeRange) {
   const { data } = await apiClient.get<{ data: TaskCardData }>('/admin/dashboard/task-cards', {

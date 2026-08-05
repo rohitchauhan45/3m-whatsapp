@@ -5,6 +5,10 @@ export const ui = {
     'inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-primary text-white rounded-full text-sm font-medium hover:bg-brand-primaryDark transition-colors shadow-blue-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap',
   btnPrimaryLg:
     'inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-brand-primary text-white rounded-xl text-sm font-medium hover:bg-brand-primaryDark transition-colors shadow-blue-sm disabled:opacity-50 disabled:cursor-not-allowed',
+  btnSecondary:
+    'inline-flex items-center justify-center gap-2 px-6 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+  btnDraft:
+    'inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-amber-400 text-gray-900 rounded-xl text-sm font-semibold hover:bg-amber-500 transition-colors shadow-md shadow-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed',
   btnPrimaryWide:
     'inline-flex items-center justify-center gap-2 px-8 py-3 bg-brand-primary text-white rounded-xl text-sm font-medium hover:bg-brand-primaryDark transition-colors shadow-blue-sm',
   btnGhostBlue:

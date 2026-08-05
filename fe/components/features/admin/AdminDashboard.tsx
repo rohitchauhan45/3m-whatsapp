@@ -47,6 +47,7 @@ import {
   showsDateColumn,
   type PaginationMeta,
 } from '@/lib/services/dashboardService';
+import { formatDayMonthYearFromIso } from '@/lib/utils/taskTabDate';
 import { editTask } from '@/lib/services/taskService';
 import { cachedQueryOptions } from '@/lib/query-config';
 import { useToast } from '@/lib/providers/toast-provider';
@@ -200,15 +201,6 @@ type TaskEditForm = {
   start: string;
   end: string;
 };
-
-function formatDayMonthYear(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const year = d.getUTCFullYear();
-  return `${day}-${month}-${year}`;
-}
 
 function buildFilterTaskDetailModal(
   group: TaskTableUserGroup,
@@ -499,14 +491,20 @@ type AdminDashboardTab = 'user' | 'task';
 type AdminDashboardProps = {
   tab: AdminDashboardTab;
   initialSearch?: string;
+  initialTimeRange?: TimeRange;
   onAddTask?: () => void;
 };
 
-export default function AdminDashboard({ tab, initialSearch = '', onAddTask }: AdminDashboardProps) {
+export default function AdminDashboard({
+  tab,
+  initialSearch = '',
+  initialTimeRange = 'today',
+  onAddTask,
+}: AdminDashboardProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { showToast, showError } = useToast();
-  const [taskTimeRange, setTaskTimeRange] = useState<TimeRange>('today');
+  const [taskTimeRange, setTaskTimeRange] = useState<TimeRange>(initialTimeRange);
   const [userTimeRange, setUserTimeRange] = useState<TimeRange>('today');
   const [search, setSearch] = useState(initialSearch);
   const [searchInput, setSearchInput] = useState(initialSearch);
@@ -564,7 +562,7 @@ export default function AdminDashboard({ tab, initialSearch = '', onAddTask }: A
     setTaskEditForm({
       taskId: task.id,
       userName: group.name,
-      dateLabel: formatDayMonthYear(task.date),
+      dateLabel: formatDayMonthYearFromIso(task.date),
       name: task.name,
       start: task.rawStartTime,
       end: task.rawEndTime,
@@ -572,7 +570,7 @@ export default function AdminDashboard({ tab, initialSearch = '', onAddTask }: A
   };
 
   const openAddTaskModal = (group: TaskTableUserGroup) => {
-    const dateLabel = group.tasks[0]?.date ? formatDayMonthYear(group.tasks[0].date) : '';
+    const dateLabel = group.tasks[0]?.date ? formatDayMonthYearFromIso(group.tasks[0].date) : '';
     setAddTaskForm({
       userName: group.name,
       userNumber: group.number,
@@ -619,6 +617,10 @@ export default function AdminDashboard({ tab, initialSearch = '', onAddTask }: A
     const term = userName.trim() || userNumber.trim();
     router.push(`/tasks?search=${encodeURIComponent(term)}`);
   };
+
+  useEffect(() => {
+    setTaskTimeRange(initialTimeRange);
+  }, [initialTimeRange]);
 
   useEffect(() => {
     setSearchInput(initialSearch);

@@ -8,6 +8,7 @@ import {
   inputValueToTaskDate,
   taskDateToInputValue,
 } from '@/lib/utils/taskImportValidation';
+import { formatTaskTabDate } from '@/lib/utils/taskTabDate';
 import { ui } from '@/lib/utils/ui-classes';
 
 export type PreviewRow = TaskPreviewRow;
@@ -37,7 +38,7 @@ export function editableFieldClass(extra = '') {
   return `${ui.inputEditable} ${extra}`.trim();
 }
 
-export function createEmptyTaskForGroup(name: string, number: string): PreviewRow {
+export function createEmptyTaskForGroup(name: string, number: string, date = ''): PreviewRow {
   return {
     id: `new-${crypto.randomUUID()}`,
     name,
@@ -45,6 +46,7 @@ export function createEmptyTaskForGroup(name: string, number: string): PreviewRo
     taskName: '',
     rawStartTime: '',
     rawEndTime: '',
+    ...(date ? { date } : {}),
   };
 }
 
@@ -83,8 +85,13 @@ export default function TaskImportPreviewTable({ rows, onChange }: TaskImportPre
     );
     if (lastIndex === -1) return;
 
+    const sharedDate = getSharedPreviewDate(rows);
     const next = [...rows];
-    next.splice(lastIndex + 1, 0, createEmptyTaskForGroup(group.name, group.number));
+    next.splice(
+      lastIndex + 1,
+      0,
+      createEmptyTaskForGroup(group.name, group.number, sharedDate),
+    );
     onChange(next);
   };
 
@@ -113,7 +120,9 @@ export default function TaskImportPreviewTable({ rows, onChange }: TaskImportPre
           className={`${editableFieldClass('sm:w-auto')} cursor-pointer`}
         />
         {previewDate && (
-          <span className={`text-base font-medium ${ui.textAccent}`}>{previewDate}</span>
+          <span className={`text-base font-medium ${ui.textAccent}`}>
+            {formatTaskTabDate(previewDate)}
+          </span>
         )}
       </div>
 

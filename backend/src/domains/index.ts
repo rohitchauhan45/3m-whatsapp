@@ -6,6 +6,7 @@ import { whtsappRoutes } from "./whtsapp";
 import { taskRoutes } from "./Task";
 import { adminRoutes } from "./admin";
 import { siteRoutes } from "./site";
+import { draftTaskRoutes } from "./DraftTask";
 
 export default function defineRoutes(expressRouter: Router): void {
   authRoutes(expressRouter);
@@ -15,4 +16,5 @@ export default function defineRoutes(expressRouter: Router): void {
   taskRoutes(expressRouter);
   adminRoutes(expressRouter);
   siteRoutes(expressRouter);
+  draftTaskRoutes(expressRouter)
 }
