@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { timeRange } from "../../../domains/admin/Dashboard/service";
+import { normalizeSheetDate } from "../Task/readfromxl";
 import {
     addCalendarDays,
     calendarDateFromParts,
@@ -11,6 +12,14 @@ import {
 export const convertTimeRangeintoDate = (
     time: timeRange
 ): Prisma.DateTimeFilter => {
+    const calendarDate = normalizeSheetDate(time);
+    if (calendarDate) {
+        return {
+            gte: calendarDate,
+            lte: endOfCalendarDay(calendarDate),
+        };
+    }
+
     const now = new Date();
     const { y, m, d } = getISTCalendarParts(now);
     const todayStart = calendarDateFromParts(y, m, d);

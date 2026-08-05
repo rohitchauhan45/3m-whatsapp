@@ -1,17 +1,19 @@
 import { NextFunction, Request, Response, Router } from "express";
 import { AppError } from "../../../libraries/error-handling/AppError";
 import { authenticateToken, requireAdmin } from "../../../middlewares/jwt";
+import { normalizeSheetDate } from "../../../libraries/util/Task/readfromxl";
 import {
     taskCardDetails,
     taskTable,
     userCardDetails,
     usertable,
     type timeRange,
+    type PresetTimeRange,
     type UserStatusFilter,
     type TaskTableStatusFilter,
 } from "./service";
 
-const TIME_RANGES: timeRange[] = [
+const TIME_RANGES: PresetTimeRange[] = [
     "today",
     "tomorrow",
     "yesterday",
@@ -23,11 +25,18 @@ const TIME_RANGES: timeRange[] = [
 ];
 
 function parseTimeRange(raw: unknown): timeRange {
-    const value = String(raw ?? "today").trim() as timeRange;
-    if (!TIME_RANGES.includes(value)) {
-        throw new AppError("Validation error", `Invalid time range. Use: ${TIME_RANGES.join(", ")}`, 400);
+    const value = String(raw ?? "today").trim();
+    if (TIME_RANGES.includes(value as PresetTimeRange)) {
+        return value as PresetTimeRange;
     }
-    return value;
+    if (normalizeSheetDate(value)) {
+        return value;
+    }
+    throw new AppError(
+        "Validation error",
+        `Invalid time range. Use: ${TIME_RANGES.join(", ")} or DD-MM-YYYY`,
+        400,
+    );
 }
 
 function parseTaskStatusFilter(raw: unknown): TaskTableStatusFilter | undefined {

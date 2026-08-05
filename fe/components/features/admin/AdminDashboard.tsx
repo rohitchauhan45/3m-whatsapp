@@ -32,7 +32,7 @@ import {
 import { validatePreviewRows } from '@/lib/utils/taskImportValidation';
 import { invalidateAdminTasks, invalidateDashboardQueries, queryKeys } from '@/lib/query-keys';
 import {
-  TIME_RANGE_OPTIONS,
+  getTimeRangeOptions,
   type TimeRange,
   type TaskStatusFilter,
   type UserStatusFilter,
@@ -249,6 +249,7 @@ function TableFilters({
   onSearchChange,
   searchPlaceholder,
   timeRange,
+  timeRangeOptions,
   onTimeRangeChange,
   leftSlot,
   rightSlot,
@@ -257,6 +258,7 @@ function TableFilters({
   onSearchChange: (value: string) => void;
   searchPlaceholder: string;
   timeRange: TimeRange;
+  timeRangeOptions: { value: TimeRange; label: string }[];
   onTimeRangeChange: (value: TimeRange) => void;
   leftSlot?: React.ReactNode;
   rightSlot?: React.ReactNode;
@@ -278,7 +280,7 @@ function TableFilters({
         <Dropdown
           value={timeRange}
           onChange={(v) => onTimeRangeChange(v as TimeRange)}
-          options={TIME_RANGE_OPTIONS}
+          options={timeRangeOptions}
           align="right"
         />
       </div>
@@ -697,6 +699,8 @@ export default function AdminDashboard({
     (tab === 'task' && (taskCardsQuery.isLoading || taskTableQuery.isLoading)) ||
     (tab === 'user' && (userCardsQuery.isLoading || userTableQuery.isLoading));
 
+  const taskTimeRangeOptions = getTimeRangeOptions(taskTimeRange);
+  const userTimeRangeOptions = getTimeRangeOptions(userTimeRange);
   const showTaskDateCol = showsDateColumn(taskTimeRange);
   const showUserDateCol = showsDateColumn(userTimeRange);
   const isAllFilter = taskStatusFilter === 'all';
@@ -815,6 +819,7 @@ export default function AdminDashboard({
                 onSearchChange={setSearchInput}
                 searchPlaceholder="Search tasks..."
                 timeRange={taskTimeRange}
+                timeRangeOptions={taskTimeRangeOptions}
                 onTimeRangeChange={setTaskTimeRange}
                 leftSlot={
                   <TaskStatusFilterBar value={taskStatusFilter} onChange={setTaskStatusFilter} />
@@ -1079,6 +1084,7 @@ export default function AdminDashboard({
                 onSearchChange={setSearchInput}
                 searchPlaceholder="Search by name or number..."
                 timeRange={userTimeRange}
+                timeRangeOptions={userTimeRangeOptions}
                 onTimeRangeChange={setUserTimeRange}
                 leftSlot={
                   <UserStatusFilterBar value={userStatusFilter} onChange={setUserStatusFilter} />

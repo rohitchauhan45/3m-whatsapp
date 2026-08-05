@@ -6,6 +6,8 @@ import type { DraftTaskCard } from '@/lib/utils/draftTaskCards';
 import { formatTaskTabDate } from '@/lib/utils/taskTabDate';
 import { ui } from '@/lib/utils/ui-classes';
 
+const RELATIVE_DAY_LABELS = new Set(['Today', 'Yesterday', 'Tomorrow']);
+
 type TaskDayCardsProps = {
   days: AdminTaskDay[];
   draftCards: DraftTaskCard[];
@@ -73,9 +75,15 @@ function TaskDayCard({
           <span className="text-xs text-gray-500">tasks</span>
         </div>
         <div className="text-right">
-          <p className="text-lg font-semibold text-gray-800">{formatTaskTabDate(day.date)}</p>
-          {(day.label === 'Today' || day.label === 'Yesterday') && (
-            <p className="text-xs text-brand-primary font-medium">{day.label}</p>
+          {RELATIVE_DAY_LABELS.has(day.label) ? (
+            <>
+              <p className="text-lg font-semibold text-gray-800">{day.label}</p>
+              <p className="text-xs text-brand-primary font-medium">
+                {formatTaskTabDate(day.date)}
+              </p>
+            </>
+          ) : (
+            <p className="text-lg font-semibold text-gray-800">{formatTaskTabDate(day.date)}</p>
           )}
         </div>
       </div>

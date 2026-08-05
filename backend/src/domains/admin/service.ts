@@ -11,6 +11,7 @@ import {
     formatCalendarDateLabel,
     getISTCalendarParts,
     getISTTodayCalendarDate,
+    getISTTomorrowCalendarDate,
     getUTCDateParts,
 } from "../../libraries/util/Task/istDate";
 
@@ -27,6 +28,17 @@ function istTodayKey(now = new Date()): string {
 function istYesterdayKey(now = new Date()): string {
     const yesterday = addCalendarDays(getISTTodayCalendarDate(now), -1);
     return taskCalendarDateKey(yesterday);
+}
+
+function istTomorrowKey(now = new Date()): string {
+    return taskCalendarDateKey(getISTTomorrowCalendarDate(now));
+}
+
+function calendarDayLabel(dateKey: string, dateLabel: string, now = new Date()): string {
+    if (dateKey === istTodayKey(now)) return "Today";
+    if (dateKey === istYesterdayKey(now)) return "Yesterday";
+    if (dateKey === istTomorrowKey(now)) return "Tomorrow";
+    return dateLabel;
 }
 
 interface cronjobData {
@@ -97,9 +109,6 @@ export const getAllTasksByDate = async () => {
             if (task.user.parent) day.managers.add(task.user.parent.id);
         }
 
-        const today = istTodayKey();
-        const yesterday = istYesterdayKey();
-
         const days = Array.from(dayMap.values())
             .sort((a, b) => taskCalendarDateKey(b.taskDate).localeCompare(taskCalendarDateKey(a.taskDate)))
             .map((d) => {
@@ -107,7 +116,7 @@ export const getAllTasksByDate = async () => {
                 const dateLabel = formatCalendarDateLabel(d.taskDate);
                 return {
                     date: dateLabel,
-                    label: dateKey === today ? "Today" : dateKey === yesterday ? "Yesterday" : dateLabel,
+                    label: calendarDayLabel(dateKey, dateLabel),
                     taskCount: d.tasks.length,
                     userCount: d.users.size,
                     managerCount: d.managers.size,
@@ -175,9 +184,6 @@ export async function getManagerTasks(managerId: string): Promise<ManagerTasksRe
         }
     }
 
-    const today = istTodayKey();
-    const yesterday = istYesterdayKey();
-
     const days = Array.from(tasksByDay.values())
         .sort((a, b) => taskCalendarDateKey(b.taskDate).localeCompare(taskCalendarDateKey(a.taskDate)))
         .map((entry) => {
@@ -185,7 +191,7 @@ export async function getManagerTasks(managerId: string): Promise<ManagerTasksRe
             const dateLabel = formatCalendarDateLabel(entry.taskDate);
             return {
                 date: dateLabel,
-                label: dateKey === today ? "Today" : dateKey === yesterday ? "Yesterday" : dateLabel,
+                label: calendarDayLabel(dateKey, dateLabel),
                 taskCount: entry.tasks.length,
                 tasks: entry.tasks,
             };

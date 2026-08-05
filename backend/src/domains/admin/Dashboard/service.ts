@@ -5,7 +5,18 @@ import logger from "../../../libraries/log/logger";
 import { convertTimeRangeintoDate } from "../../../libraries/util/Admin/timing";
 import { notifyAdminError } from "../../../libraries/util/notifyAdminError";
 
-export type timeRange = "today" | "tomorrow" | "yesterday" | "thisweek" | "lastweek" | "thismonth" | "lastmonth" | "thisyear"
+export type PresetTimeRange =
+    | "today"
+    | "tomorrow"
+    | "yesterday"
+    | "thisweek"
+    | "lastweek"
+    | "thismonth"
+    | "lastmonth"
+    | "thisyear";
+
+/** Preset range or calendar label from task cards (`DD-MM-YYYY`). */
+export type timeRange = PresetTimeRange | string;
 
 interface PaginationResult {
     tasks: (Task & { date: Date })[];

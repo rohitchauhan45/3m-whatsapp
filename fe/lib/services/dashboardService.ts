@@ -1,6 +1,7 @@
 import { apiClient } from '@/lib/api/client';
+import { formatTaskTabDate } from '@/lib/utils/taskTabDate';
 
-export type TimeRange =
+export type PresetTimeRange =
   | 'today'
   | 'tomorrow'
   | 'yesterday'
@@ -10,7 +11,16 @@ export type TimeRange =
   | 'lastmonth'
   | 'thisyear';
 
-export const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
+/** Preset range or calendar label from task cards (`DD-MM-YYYY`). */
+export type TimeRange = PresetTimeRange | string;
+
+const CALENDAR_DATE_LABEL_RE = /^\d{1,2}-\d{1,2}-\d{4}$/;
+
+export function isCalendarDateLabel(value: string): boolean {
+  return CALENDAR_DATE_LABEL_RE.test(value.trim());
+}
+
+export const TIME_RANGE_OPTIONS: { value: PresetTimeRange; label: string }[] = [
   { value: 'today', label: 'Today' },
   { value: 'tomorrow', label: 'Tomorrow' },
   { value: 'yesterday', label: 'Yesterday' },
@@ -20,6 +30,17 @@ export const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
   { value: 'lastmonth', label: 'Last Month' },
   { value: 'thisyear', label: 'This Year' },
 ];
+
+export function getTimeRangeOptions(current?: TimeRange): { value: TimeRange; label: string }[] {
+  if (
+    current &&
+    isCalendarDateLabel(current) &&
+    !TIME_RANGE_OPTIONS.some((option) => option.value === current)
+  ) {
+    return [{ value: current, label: formatTaskTabDate(current) }, ...TIME_RANGE_OPTIONS];
+  }
+  return TIME_RANGE_OPTIONS;
+}
 
 export interface TaskCardData {
   inProgress: number;
@@ -128,8 +149,9 @@ type UserTableQuery = {
   status?: UserStatusFilter;
 };
 
-/** Show date column for multi-day ranges (not today / tomorrow / yesterday). */
+/** Show date column for multi-day ranges (not a single calendar day). */
 export function showsDateColumn(time: TimeRange): boolean {
+  if (isCalendarDateLabel(time)) return false;
   return time !== 'today' && time !== 'tomorrow' && time !== 'yesterday';
 }
 

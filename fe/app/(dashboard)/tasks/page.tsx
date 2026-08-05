@@ -56,11 +56,14 @@ type View = 'days' | 'dashboard' | 'upload' | 'preview' | 'draft-preview' | 'don
 function dayToTimeRange(day: AdminTaskDay): TimeRange {
   if (day.label === 'Today') return 'today';
   if (day.label === 'Yesterday') return 'yesterday';
-  return 'thismonth';
+  if (day.label === 'Tomorrow') return 'tomorrow';
+  return day.date;
 }
 
 function dayBreadcrumbLabel(day: AdminTaskDay): string {
-  if (day.label === 'Today' || day.label === 'Yesterday') return day.label;
+  if (day.label === 'Today' || day.label === 'Yesterday' || day.label === 'Tomorrow') {
+    return day.label;
+  }
   return day.date;
 }
 
