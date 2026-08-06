@@ -22,6 +22,7 @@ import { notifyAdminError } from "../../../libraries/util/notifyAdminError";
 import { findActiveTaskUserByWhatsAppNumber } from "../shared";
 import type { FinalDecisionResult, RemainingStatusResult, TaskResult } from "../types";
 import { sendStartTask } from "../Follow-up/service";
+import { sendPreviousTaskFollowupButtons } from "../Previous/service";
 
 const BATCH_SIZE = 100;
 const BATCH_DELAY_MS = 10_000;
@@ -591,7 +592,7 @@ export const updateFinalDecision = async (id: string, from: string, choice: "ont
                 message: "Thank you! Marked as on track.",
             });
 
-            await handlePreviousStartTask(updateDailyTask.id)
+            await handlePreviousStartTask(updateDailyTask.id, user.number)
 
             return;
         }
@@ -634,7 +635,7 @@ export const updateFinalDecision = async (id: string, from: string, choice: "ont
     }
 };
 
-const handlePreviousStartTask = async (did: string): Promise<boolean> => {
+const handlePreviousStartTask = async (did: string, number: string): Promise<boolean> => {
     try {
         const currentTime = new Date()
 
@@ -649,6 +650,10 @@ const handlePreviousStartTask = async (did: string): Promise<boolean> => {
             select: {
                 id: true,
                 position: true,
+                name: true,
+                rawStartTime: true,
+                rawEndTime: true,
+                endAt: true
             },
             orderBy: { position: "asc" },
         })
@@ -657,8 +662,19 @@ const handlePreviousStartTask = async (did: string): Promise<boolean> => {
             return true
         }
 
-        const result = await sendStartTask(tasks.map((t) => t.id), "onTime")
-        return result.success
+        const startTasks = tasks.filter((t) => t.endAt > currentTime)
+        const pastTasks = tasks.filter((t) => t.endAt <= currentTime)
+
+        let success = true
+        if (startTasks.length > 0) {
+            const result = await sendStartTask(startTasks.map((t) => t.id), "onTime")
+            success = result.success
+        }
+        for (const task of pastTasks) {
+            const ok = await sendPreviousTaskFollowupButtons(number, task)
+            if (!ok) success = false
+        }
+        return success
     } catch (error) {
         logger.error(`Error in find Previous Start task : `, error)
         await notifyAdminError("Handle Previous Start Task while user Active later in Morning On-Track")
@@ -697,7 +713,7 @@ export const handleFinalDecisionRemarkReason = async (
         });
 
         pendingFinalDecisionRemarkByUserId.delete(user.id);
-        await handlePreviousStartTask(pendingDailyTaskId)
+        await handlePreviousStartTask(pendingDailyTaskId, user.number)
 
         if (user.parentId) {
             const [manager, tasks] = await Promise.all([

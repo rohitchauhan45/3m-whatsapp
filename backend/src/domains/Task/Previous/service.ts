@@ -20,7 +20,7 @@ type PreviousTaskFollowupData = {
     rawEndTime: string;
 };
 
-async function sendPreviousTaskFollowupButtons(
+export async function sendPreviousTaskFollowupButtons(
     number: string,
     task: PreviousTaskFollowupData,
 ): Promise<boolean> {
