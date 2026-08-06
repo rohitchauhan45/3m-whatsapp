@@ -37,6 +37,6 @@ export const normlizeChiocestartChoice = (choice: startChoice) => {
         return TaskStaus.remark
     }
     if (choice === "delay") {
-        return TaskStaus.pending
+        return TaskStaus.delayed
     }
 }

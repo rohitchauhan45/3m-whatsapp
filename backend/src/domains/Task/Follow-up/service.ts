@@ -161,7 +161,7 @@ export const sendStartTask = async (
                 if (mode === "onTime") {
                     await prisma.task.update({
                         where: { id: task.id },
-                        data: { sent: true, sendAt },
+                        data: { sent: true, sendAt, status: TaskStaus.pending },
                     });
                 }
 
@@ -291,10 +291,10 @@ export const handleStarttaskStatus = async (taskId: string, whatsappFrom: string
             return;
         }
 
-        if (choice === TaskStaus.pending) {
+        if (choice === TaskStaus.delayed) {
             await prisma.task.update({
                 where: { id: taskId },
-                data: { status: TaskStaus.pending },
+                data: { status: TaskStaus.delayed },
             });
 
             pendingStartTaskDelayTimeByUserId.set(user.id, taskId)

@@ -67,7 +67,7 @@ export const handlePendigTaskUpdateText = async (from: string) => {
                     deletedAt: null,
                 },
                 endAt: { lt: currentTime },
-                status: { in: ["inProgress", "pending", "remark"] },
+                status: { in: ["inProgress", "pending", "remark", "delayed"] },
                 finaldecision: null,
                 deletedAt: null,
             },
@@ -111,7 +111,7 @@ export const handlePreviousPendingTask = async (from: string, dailyTaskId: strin
                 dailyTaskId: dailyTaskId,
                 endAt: { lt: currentTime },
                 position: { lt: taskPosition },
-                status: { in: ["inProgress", "pending", "remark"] },
+                status: { in: ["inProgress", "pending", "remark","delayed"] },
                 finaldecision: null,
                 deletedAt: null
             },

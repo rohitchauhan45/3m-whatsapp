@@ -28,6 +28,7 @@ enum Provider{
 enum TaskStaus{
   notSend
   pending
+  delayed
   inProgress
   hold
   remark
