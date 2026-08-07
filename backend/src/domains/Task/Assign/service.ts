@@ -578,7 +578,6 @@ export async function sendMorningOnTrackButtonsToUser(phone: string): Promise<bo
             userId: user.id,
             sent: true,
             status: AcceptStatus.accept,
-            finaldecision: null,
         },
         include: {
             user: { select: { name: true } },
@@ -588,6 +587,14 @@ export async function sendMorningOnTrackButtonsToUser(phone: string): Promise<bo
             },
         },
     });
+
+    if(dailyTask?.finaldecision==="onTrack"){
+        await sendMessageOnWhatsapp({
+            number: phone,
+            message: "You are already on-track !",
+        });
+        return false;
+    }
 
     if (!dailyTask?.tasks.length) {
         await sendMessageOnWhatsapp({
