@@ -18,6 +18,7 @@ type PreviousTaskFollowupData = {
     name: string;
     rawStartTime: string;
     rawEndTime: string;
+    status: string
 };
 
 export async function sendPreviousTaskFollowupButtons(
@@ -36,6 +37,16 @@ export async function sendPreviousTaskFollowupButtons(
     })
 
     if (result.success) {
+        if (task.status === TaskStaus.notSend) {
+            await prisma.task.update(
+                {
+                    where: { id: task.id },
+                    data: {
+                        status: TaskStaus.pending
+                    }
+                }
+            )
+        }
         logger.info(`send previousTask follow-up to ${number} task position ${task.position}`)
     } else {
         logger.info(`Error in send previousTask follow-up to ${number} task position ${task.position}`)
@@ -77,6 +88,7 @@ export const handlePendigTaskUpdateText = async (from: string) => {
                 name: true,
                 rawStartTime: true,
                 rawEndTime: true,
+                status: true
             },
             orderBy: { position: "asc" },
         });
@@ -111,7 +123,7 @@ export const handlePreviousPendingTask = async (from: string, dailyTaskId: strin
                 dailyTaskId: dailyTaskId,
                 endAt: { lt: currentTime },
                 position: { lt: taskPosition },
-                status: { in: ["inProgress", "pending", "remark","delayed"] },
+                status: { in: ["inProgress", "pending", "remark", "delayed"] },
                 finaldecision: null,
                 deletedAt: null
             },
@@ -119,6 +131,7 @@ export const handlePreviousPendingTask = async (from: string, dailyTaskId: strin
                 id: true,
                 position: true,
                 name: true,
+                status: true,
                 rawStartTime: true,
                 rawEndTime: true
             },
@@ -168,6 +181,7 @@ export const sendPreviousTaskHoldReminders = async (): Promise<TaskResult> => {
                 name: true,
                 rawStartTime: true,
                 rawEndTime: true,
+                status: true,
                 user: { select: { number: true } },
             },
         })

@@ -588,7 +588,7 @@ export async function sendMorningOnTrackButtonsToUser(phone: string): Promise<bo
         },
     });
 
-    if(dailyTask?.finaldecision==="onTrack"){
+    if (dailyTask?.finaldecision === "onTrack") {
         await sendMessageOnWhatsapp({
             number: phone,
             message: "You are already on-track !",
@@ -705,7 +705,8 @@ const handlePreviousStartTask = async (did: string, number: string): Promise<boo
                 name: true,
                 rawStartTime: true,
                 rawEndTime: true,
-                endAt: true
+                endAt: true,
+                status: true
             },
             orderBy: { position: "asc" },
         })
