@@ -42,6 +42,7 @@ export async function sendPreviousTaskFollowupButtons(
                 {
                     where: { id: task.id },
                     data: {
+                        sent: true,
                         status: TaskStaus.pending
                     }
                 }
