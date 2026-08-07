@@ -250,7 +250,10 @@ export const handlePreviousTaskFollowupStatus = async (taskId: string, from: str
                 break
 
             case "completed":
-                await prisma.task.update({ where: { id: taskId }, data: { finaldecision: TaskFinalStatus.completed } })
+                await prisma.task.update({
+                    where: { id: taskId },
+                    data: { finaldecision: TaskFinalStatus.completed, completedAt: new Date() },
+                })
                 await sendMessageOnWhatsapp({ number: from, message: "Thanks for updating the status on your previous task." })
                 break
 

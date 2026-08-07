@@ -46,6 +46,7 @@ export type TaskTableUserTask = {
     totalTime: string | null;
     sent: boolean;
     sendAt: Date | null;
+    completedAt: Date | null;
     date: Date;
 };
 
@@ -116,7 +117,7 @@ export const taskCardDetails = async (time: timeRange, managerId?: string) => {
             prisma.task.count({ where: { ...baseWhere, finaldecision: null, status: TaskStaus.remark } }),
             prisma.task.count({ where: { ...baseWhere, finaldecision: TaskFinalStatus.cancelled } }),
             prisma.task.count({
-                where: { ...baseWhere, finaldecision: null, status: TaskStaus.notSend },
+                where: { ...baseWhere, finaldecision: null, status: TaskStaus.pending },
             }),
             prisma.task.count({
                 where: {
@@ -162,7 +163,7 @@ function buildTaskTableStatusWhere(
     statusFilter: TaskTableStatusFilter,
 ): Prisma.TaskWhereInput {
     if (statusFilter === "all") return {};
-    if (statusFilter === "pending") return { finaldecision: null, status: { in: [TaskStaus.notSend,TaskStaus.pending] } };
+    if (statusFilter === "pending") return { finaldecision: null, status: TaskStaus.pending };
     if (statusFilter === "delayed") return { finaldecision: null, extratTme: { not: null, gt: 0 } };
     if (statusFilter === "inprogress") {
         return { finaldecision: null, status: { in: [TaskStaus.inProgress] } };
@@ -249,6 +250,7 @@ async function taskTableGroupedByUser(
             totalTime: taskRow.totalTime,
             sent: taskRow.sent,
             sendAt: taskRow.sendAt,
+            completedAt: taskRow.completedAt,
             date: dailyTask.date,
         };
 

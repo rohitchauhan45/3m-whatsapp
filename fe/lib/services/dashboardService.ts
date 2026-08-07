@@ -91,6 +91,7 @@ export interface TaskTableUserTask {
   totalTime: string | null;
   sent: boolean;
   sendAt: string | null;
+  completedAt: string | null;
   date: string;
 }
 

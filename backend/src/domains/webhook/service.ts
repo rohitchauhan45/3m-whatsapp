@@ -4,6 +4,8 @@ import {
     handleFinalDecisionRemarkReason,
     handleFollowUp,
     handleFollowUpReply,
+    handleMenuButton,
+    handleMenuText,
     handlePendigTaskUpdateText,
     handlePreviousTaskFollowupStatus,
     handleStartTaskDelayTime,
@@ -133,6 +135,11 @@ async function handleButtonAction(
         return;
     }
 
+    if (action === "menu") {
+        await handleMenuButton(storedNumber, id);
+        return;
+    }
+
     if (action === "blocked" || action === "completed" || action === "hold") {
         await handlePreviousTaskFollowupStatus(id, storedNumber, action);
     }
@@ -182,6 +189,11 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
         if (!textBody) return;
 
         logger.info(`incoming msg from = ${from} message = ${textBody}`);
+
+        if (textBody.toLowerCase() === "menu") {
+            await handleMenuText(user.number);
+            return;
+        }
 
         if (textBody.toLowerCase() === "update") {
             await handlePendigTaskUpdateText(user.number);

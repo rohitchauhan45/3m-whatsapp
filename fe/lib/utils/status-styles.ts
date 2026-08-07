@@ -5,6 +5,7 @@ const TASK_STATUS_CLASSES: Record<string, string> = {
   cancelled: 'text-red-600',
   blocked: 'text-orange-600',
   hold: 'text-amber-600',
+  delayed: 'text-orange-600',
   notSend: 'text-red-600',
   pending: 'text-red-600',
   onTrack: 'text-blue-600',

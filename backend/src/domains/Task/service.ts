@@ -4,3 +4,4 @@ export * from "./Create/service";
 export * from "./Assign/service";
 export * from "./Follow-up/service";
 export * from "./Previous/service";
+export * from "./Menu/service";

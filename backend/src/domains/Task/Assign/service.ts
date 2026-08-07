@@ -522,21 +522,12 @@ export const finalDecisionDailyTask = async (): Promise<FinalDecisionResult> => 
                 continue;
             }
 
-            const body = finalDecisionMessage(dailyTask.user.name, dailyTask.tasks);
-            const buttons = [
-                { id: `ontrack_${dailyTask.id}`, title: "on track" },
-                { id: `no_${dailyTask.id}`, title: "remark" },
-                { id: `absent_${dailyTask.id}`, title: "Absent" }
-            ];
-
-            const result = await sendWhatsAppButtons({ number: phone, message: body, buttons });
-            if (result.success) {
+            const sentOk = await sendMorningOnTrackButtonsForDailyTask(phone, dailyTask);
+            if (sentOk) {
                 sent += 1;
             } else {
                 failedSends += 1;
-                logger.warn(
-                    `final-decision send failed user num= ${dailyTask.user.number} detail=${result.message}`
-                );
+                logger.warn(`final-decision send failed user num= ${dailyTask.user.number}`);
             }
         }
 
@@ -554,6 +545,60 @@ export const finalDecisionDailyTask = async (): Promise<FinalDecisionResult> => 
         throw new AppError("Error in FinalDecision morning on tracking ", error.message);
     }
 };
+
+type MorningOnTrackDailyTask = {
+    id: string;
+    user: { name: string };
+    tasks: { name: string }[];
+};
+
+async function sendMorningOnTrackButtonsForDailyTask(
+    phone: string,
+    dailyTask: MorningOnTrackDailyTask,
+): Promise<boolean> {
+    const body = finalDecisionMessage(dailyTask.user.name, dailyTask.tasks);
+    const buttons = [
+        { id: `ontrack_${dailyTask.id}`, title: "on track" },
+        { id: `no_${dailyTask.id}`, title: "remark" },
+        { id: `absent_${dailyTask.id}`, title: "Absent" },
+    ];
+
+    const result = await sendWhatsAppButtons({ number: phone, message: body, buttons });
+    return result.success;
+}
+
+export async function sendMorningOnTrackButtonsToUser(phone: string): Promise<boolean> {
+    const user = await findActiveTaskUserByWhatsAppNumber(phone);
+    if (!user) return false;
+
+    const dailyTask = await prisma.dailyTask.findFirst({
+        where: {
+            deletedAt: null,
+            date: getISTTodayCalendarDate(),
+            userId: user.id,
+            sent: true,
+            status: AcceptStatus.accept,
+            finaldecision: null,
+        },
+        include: {
+            user: { select: { name: true } },
+            tasks: {
+                where: { deletedAt: null },
+                select: { name: true },
+            },
+        },
+    });
+
+    if (!dailyTask?.tasks.length) {
+        await sendMessageOnWhatsapp({
+            number: phone,
+            message: "No morning on track tasks found for today.",
+        });
+        return false;
+    }
+
+    return sendMorningOnTrackButtonsForDailyTask(phone, dailyTask);
+}
 
 export const updateFinalDecision = async (id: string, from: string, choice: "ontrack" | "no") => {
     try {

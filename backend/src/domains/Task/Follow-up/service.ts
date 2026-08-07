@@ -667,9 +667,11 @@ export const handleFollowUp = async (taskId: string, whatsappFrom: string, ch: c
         }
 
         if (choice === TaskFinalStatus.completed) {
+
+            const currentTime = new Date()
             await prisma.task.update({
                 where: { id: taskId },
-                data: { finaldecision: TaskFinalStatus.completed },
+                data: { finaldecision: TaskFinalStatus.completed, completedAt: currentTime },
             });
             clearPendingFollowUp(user.id);
             await sendMessageOnWhatsapp({

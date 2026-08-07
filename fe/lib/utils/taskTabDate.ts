@@ -156,3 +156,17 @@ export function formatShortDisplayDate(iso: string | Date): string {
   if (Number.isNaN(d.getTime())) return '—';
   return formatTaskTabDateFromDate(d);
 }
+
+/** Completed task time in IST — e.g. `10:30am`, `11:34pm`. */
+export function formatCompletedAtTime(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  const formatted = d.toLocaleString('en-IN', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Kolkata',
+  });
+  return formatted.replace(':00 ', ' ').replace(/\s(am|pm)/i, '$1').toLowerCase();
+}

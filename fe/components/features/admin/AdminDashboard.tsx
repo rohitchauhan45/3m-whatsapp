@@ -47,7 +47,7 @@ import {
   showsDateColumn,
   type PaginationMeta,
 } from '@/lib/services/dashboardService';
-import { formatDayMonthYearFromIso } from '@/lib/utils/taskTabDate';
+import { formatDayMonthYearFromIso, formatCompletedAtTime } from '@/lib/utils/taskTabDate';
 import { editTask } from '@/lib/services/taskService';
 import { cachedQueryOptions } from '@/lib/query-config';
 import { useToast } from '@/lib/providers/toast-provider';
@@ -98,9 +98,12 @@ type TaskDetailModalData = {
 };
 
 function formatTaskStatusLabel(status: string | null | undefined): string {
-  if (!status || status === 'notSend') return 'not send';
+  if (!status) return '—';
+  if (status === 'notSend') return 'not send';
+  if (status === 'pending') return 'pending';
   if (status === 'onTrack') return 'in progress';
   if (status === 'inProgress') return 'in progress';
+  if (status === 'delayed') return 'delayed';
   return status;
 }
 
@@ -397,8 +400,9 @@ function TaskStatusBadge({
     cancelled: 'cancelled',
     blocked: 'blocked',
     hold: 'hold',
+    delayed: 'delayed',
     notSend: 'not send',
-    pending: 'not send',
+    pending: 'pending',
     onTrack: 'in progress',
     deleted: 'deleted',
   };
@@ -709,7 +713,7 @@ export default function AdminDashboard({
   const isPendingFilter = taskStatusFilter === 'pending';
   const isCompletedFilter = taskStatusFilter === 'completed';
   const isCancelledFilter = taskStatusFilter === 'cancelled';
-  const showTaskStatusCol = isAllFilter || isPendingFilter;
+  const showTaskStatusCol = isAllFilter || isPendingFilter || isDelayedFilter;
   const showTaskReasonCol = !isAllFilter && (isRemarkFilter || isCancelledFilter);
   const showExtraTimeCol = !isAllFilter && isDelayedFilter;
   const showHowMuchCompleteCol = !isAllFilter && isDelayedFilter;
@@ -946,13 +950,19 @@ export default function AdminDashboard({
                                     </td>
                                   )}
                                   {showCompletedAtCol && (
-                                    <td className="px-4 py-3 text-gray-400">—</td>
+                                    <td className="px-4 py-3 text-gray-700">
+                                      {formatCompletedAtTime(task.completedAt)}
+                                    </td>
                                   )}
                                   <td className="px-2 py-3 align-middle whitespace-nowrap">
                                     <div className="flex items-center w-full">
                                       {showTaskStatusCol && (
                                         <TaskStatusBadge
-                                          status={getTaskDisplayStatus(task)}
+                                          status={
+                                            isDelayedFilter
+                                              ? task.status
+                                              : getTaskDisplayStatus(task)
+                                          }
                                           large
                                         />
                                       )}
