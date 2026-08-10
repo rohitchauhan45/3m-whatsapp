@@ -521,10 +521,8 @@ export default function AdminDashboard({
   const [addTaskForm, setAddTaskForm] = useState<TaskAddForm | null>(null);
   const [addUserOpen, setAddUserOpen] = useState(false);
   const [userDetailModal, setUserDetailModal] = useState<DashboardDailyTask | null>(null);
-  const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatusFilter>(
-    initialSearch ? 'all' : 'remark',
-  );
-  const [userStatusFilter, setUserStatusFilter] = useState<UserStatusFilter>('remaining');
+  const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatusFilter>('all');
+  const [userStatusFilter, setUserStatusFilter] = useState<UserStatusFilter>('all');
   const truncateLength = useTruncateLength();
 
   const createTaskMutation = useMutation({

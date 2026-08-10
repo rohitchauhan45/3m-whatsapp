@@ -23,7 +23,7 @@ type PreviewGroup = {
 function groupPreviewRows(rows: PreviewRow[]): PreviewGroup[] {
   const map = new Map<string, PreviewGroup>();
   for (const row of rows) {
-    const key = `${row.number}|${row.name}`;
+    const key = `${row.number}|${row.name}|${row.date?.trim() ?? ''}`;
     const existing = map.get(key);
     if (existing) {
       existing.tasks.push(row);
@@ -68,7 +68,7 @@ export default function TaskImportPreviewTable({ rows, onChange }: TaskImportPre
   const updateGroupUser = (groupKey: string, patch: Partial<Pick<PreviewRow, 'name' | 'number'>>) => {
     onChange(
       rows.map((row) => {
-        const key = `${row.number}|${row.name}`;
+        const key = `${row.number}|${row.name}|${row.date?.trim() ?? ''}`;
         if (key !== groupKey) return row;
         return { ...row, ...patch };
       }),
@@ -81,21 +81,26 @@ export default function TaskImportPreviewTable({ rows, onChange }: TaskImportPre
 
   const addTaskToGroup = (group: PreviewGroup) => {
     const lastIndex = rows.findLastIndex(
-      (row) => `${row.number}|${row.name}` === group.key,
+      (row) =>
+        `${row.number}|${row.name}|${row.date?.trim() ?? ''}` === group.key,
     );
     if (lastIndex === -1) return;
 
-    const sharedDate = getSharedPreviewDate(rows);
+    const groupDate = group.tasks[0]?.date?.trim() ?? '';
     const next = [...rows];
     next.splice(
       lastIndex + 1,
       0,
-      createEmptyTaskForGroup(group.name, group.number, sharedDate),
+      createEmptyTaskForGroup(group.name, group.number, groupDate),
     );
     onChange(next);
   };
 
   const colSpan = 6;
+  const distinctDates = new Set(
+    rows.map((row) => row.date?.trim()).filter((date): date is string => Boolean(date)),
+  );
+  const isMultiDate = distinctDates.size > 1;
   const previewDate = getSharedPreviewDate(rows);
 
   const updatePreviewDate = (value: string) => {
@@ -105,26 +110,37 @@ export default function TaskImportPreviewTable({ rows, onChange }: TaskImportPre
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3 border border-gray-200 rounded-xl bg-white shadow-sm">
-        <div className="flex items-center gap-2 shrink-0">
-          <CalendarDays size={18} className={ui.textAccent} />
-          <label htmlFor="preview-task-date" className="text-sm font-semibold text-gray-800">
-            Task date
-          </label>
+      {!isMultiDate && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3 border border-gray-200 rounded-xl bg-white shadow-sm">
+          <div className="flex items-center gap-2 shrink-0">
+            <CalendarDays size={18} className={ui.textAccent} />
+            <label htmlFor="preview-task-date" className="text-sm font-semibold text-gray-800">
+              Task date
+            </label>
+          </div>
+          <input
+            id="preview-task-date"
+            type="date"
+            value={taskDateToInputValue(previewDate)}
+            onChange={(e) => updatePreviewDate(e.target.value)}
+            className={`${editableFieldClass('sm:w-auto')} cursor-pointer`}
+          />
+          {previewDate && (
+            <span className={`text-base font-medium ${ui.textAccent}`}>
+              {formatTaskTabDate(previewDate)}
+            </span>
+          )}
         </div>
-        <input
-          id="preview-task-date"
-          type="date"
-          value={taskDateToInputValue(previewDate)}
-          onChange={(e) => updatePreviewDate(e.target.value)}
-          className={`${editableFieldClass('sm:w-auto')} cursor-pointer`}
-        />
-        {previewDate && (
-          <span className={`text-base font-medium ${ui.textAccent}`}>
-            {formatTaskTabDate(previewDate)}
+      )}
+
+      {isMultiDate && (
+        <div className="flex items-center gap-2 px-4 py-3 border border-gray-200 rounded-xl bg-white shadow-sm text-sm text-gray-600">
+          <CalendarDays size={18} className={ui.textAccent} />
+          <span>
+            Multiple dates in file ({distinctDates.size} days). Tasks are grouped by date per user.
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white min-h-[420px] shadow-sm">
         <table className="w-full text-lg table-fixed">
@@ -175,6 +191,11 @@ export default function TaskImportPreviewTable({ rows, onChange }: TaskImportPre
                             inputMode="numeric"
                             className={editableFieldClass(`font-semibold ${ui.textAccent}`)}
                           />
+                          {group.tasks[0]?.date?.trim() && (
+                            <p className={`text-sm font-medium ${ui.textAccent}`}>
+                              {formatTaskTabDate(group.tasks[0].date)}
+                            </p>
+                          )}
                         </div>
                       </td>
                     )}
@@ -184,7 +205,7 @@ export default function TaskImportPreviewTable({ rows, onChange }: TaskImportPre
                         onChange={(e) => updateRow(task.id, { taskName: e.target.value })}
                         placeholder="Task name"
                         className={editableFieldClass('font-medium text-gray-900')}
-                      />
+                      />  
                     </td>
                     <td className="px-4 py-3">
                       <input

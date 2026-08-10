@@ -7,6 +7,8 @@ import {
 export const INDIAN_MOBILE_10_ERROR =
   'number must be exactly 10 digits starting with 6, 7, 8, or 9 (without country code 91)';
 
+export const MAX_ASSIGN_SHEET_DAYS = 30;
+
 export function digitsOnlyPhone(raw: string): string {
   return raw.replace(/\D/g, '');
 }
@@ -161,9 +163,7 @@ export function validatePreviewRows(rows: TaskPreviewRow[]): PreviewValidationRe
     return { valid: false, errors: ['Add at least one task row.'] };
   }
 
-  const sharedDate = getSharedPreviewDate(rows);
-  const dateError = validateTaskDate(sharedDate);
-  if (dateError) errors.push(dateError);
+  const distinctDates = new Set<string>();
 
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index];
@@ -178,6 +178,15 @@ export function validatePreviewRows(rows: TaskPreviewRow[]): PreviewValidationRe
     const digits = digitsOnlyPhone(row.number);
     if (!isValidIndianMobile10(digits)) {
       errors.push(`${userLabel}: ${INDIAN_MOBILE_10_ERROR}`);
+    }
+
+    const rowDate = row.date?.trim() ?? '';
+    if (!rowDate) {
+      errors.push(`${label}: date is required.`);
+    } else {
+      const dateError = validateTaskDate(rowDate);
+      if (dateError) errors.push(`${label}: ${dateError}`);
+      else distinctDates.add(rowDate);
     }
 
     if (!row.taskName.trim()) {
@@ -203,6 +212,12 @@ export function validatePreviewRows(rows: TaskPreviewRow[]): PreviewValidationRe
         `${label}: ${END_BEFORE_START_ERROR} (start ${row.rawStartTime.trim()}, end ${row.rawEndTime.trim()}).`,
       );
     }
+  }
+
+  if (distinctDates.size > MAX_ASSIGN_SHEET_DAYS) {
+    errors.push(
+      `Up to ${MAX_ASSIGN_SHEET_DAYS} different dates per file. Found ${distinctDates.size}.`,
+    );
   }
 
   return { valid: errors.length === 0, errors };

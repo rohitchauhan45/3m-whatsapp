@@ -7,6 +7,7 @@ import { parseTimeOnDate } from "../../../libraries/util/Task/timing";
 import { createUserWhatsApp } from "../../auth/service";
 import {
     groupAssignTaskSheetRows,
+    MAX_ASSIGN_SHEET_DAYS,
     normalizeSheetDate,
     readAssignTaskExcelSheetRows,
     dedupeIdenticalTasks,
@@ -190,6 +191,22 @@ function groupImportRows(flatRows: TaskImportRow[]): AssignTaskSheetGroup[] {
     }));
 }
 
+function validateSheetDistinctDates(groups: AssignTaskSheetGroup[]): string | null {
+    const dates = new Set<string>();
+
+    for (const group of groups) {
+        const taskDate = normalizeSheetDate(group.dateRaw);
+        if (!taskDate) continue;
+        dates.add(formatCalendarDateLabel(taskDate));
+    }
+
+    if (dates.size > MAX_ASSIGN_SHEET_DAYS) {
+        return `Up to ${MAX_ASSIGN_SHEET_DAYS} different dates per file. Found ${dates.size}.`;
+    }
+
+    return null;
+}
+
 export function previewTaskImport(buffer: Buffer): PreviewTaskResult {
     const sheetResult = readAssignTaskExcelSheetRows(buffer, { mode: "draft" });
     if (sheetResult.ok === false) {
@@ -203,6 +220,17 @@ export function previewTaskImport(buffer: Buffer): PreviewTaskResult {
     }
 
     const groups = groupAssignTaskSheetRows(sheetResult.rows, { mode: "draft" });
+    const dateLimitError = validateSheetDistinctDates(groups);
+    if (dateLimitError) {
+        return {
+            success: false,
+            status: 400,
+            message: dateLimitError,
+            rows: [],
+            failedRows: [{ row: 1, reason: dateLimitError }],
+        };
+    }
+
     const rows: TaskImportRow[] = [];
 
     for (const group of groups) {
@@ -235,10 +263,15 @@ export function previewTaskImport(buffer: Buffer): PreviewTaskResult {
         };
     }
 
+    const dayCount = new Set(rows.map((row) => row.date)).size;
+
     return {
         success: true,
         status: 200,
-        message: `Found ${rows.length} task row(s). Review and click Create.`,
+        message:
+            dayCount > 1
+                ? `Found ${rows.length} task row(s) across ${dayCount} day(s). Review and click Create.`
+                : `Found ${rows.length} task row(s). Review and click Create.`,
         rows,
         failedRows: [],
     };
@@ -362,6 +395,17 @@ function validateImportGroups(groups: AssignTaskSheetGroup[]): {
 }
 
 async function importTaskGroups(groups: AssignTaskSheetGroup[]): Promise<CreateTaskResult> {
+    const dateLimitError = validateSheetDistinctDates(groups);
+    if (dateLimitError) {
+        return {
+            success: false,
+            status: 400,
+            message: dateLimitError,
+            processed: 0,
+            failedRows: [{ row: 1, reason: dateLimitError }],
+        };
+    }
+
     const { prepared, failedRows } = validateImportGroups(groups);
 
     if (failedRows.length > 0) {

@@ -170,6 +170,9 @@ function finalizeAssignTaskGroup(group: AssignTaskSheetGroup | null): AssignTask
 
 export type AssignTaskReadMode = "full" | "draft";
 
+/** Maximum distinct calendar dates allowed in one assignTask.xlsx upload. */
+export const MAX_ASSIGN_SHEET_DAYS = 30;
+
 export type AssignTaskReadOptions = {
     mode?: AssignTaskReadMode;
 };
@@ -243,7 +246,8 @@ function rowIsBlank(row: Record<string, unknown>): boolean {
 
 /**
  * assignTask.xlsx layout:
- * - `date` is usually filled once at the top; all users/tasks on the sheet use that same date.
+ * - `date` can appear once for the whole sheet, per section, or on each user row.
+ * - When a new `date` cell appears, following user blocks use that day until the next date.
  * - First row of a user block: name, number, task, start, end, managerName, manager mobile.
  * - Next rows: only extra tasks (+ start/end) until blank row or next name+number.
  * - Empty rows between users are ignored (visual separators only).
