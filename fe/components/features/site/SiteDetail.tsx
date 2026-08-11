@@ -7,13 +7,13 @@ import { useRouter } from 'next/navigation';
 import {
   Building2,
   Crosshair,
-  Loader2,
   MapPin,
   Plus,
   Ruler,
   Users,
 } from 'lucide-react';
 import AssignSiteUsersModal from '@/components/features/site/AssignSiteUsersModal';
+import { SiteDetailSkeleton } from '@/components/ui/skeletons';
 import { useToast } from '@/lib/providers/toast-provider';
 import { usePageHeader } from '@/lib/utils/page-header-context';
 import { ui } from '@/lib/utils/ui-classes';
@@ -157,11 +157,7 @@ export default function SiteDetailView({ siteId }: SiteDetailViewProps) {
   });
 
   if (siteQuery.isLoading) {
-    return (
-      <div className="flex min-h-[480px] items-center justify-center">
-        <Loader2 className="animate-spin text-gray-400" size={28} />
-      </div>
-    );
+    return <SiteDetailSkeleton />;
   }
 
   if (!site) {

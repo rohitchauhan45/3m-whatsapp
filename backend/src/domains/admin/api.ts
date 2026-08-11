@@ -1,12 +1,14 @@
 import { NextFunction, Request, Response, Router } from "express";
 import { getAllManagers, getAllTasksByDate, getAllCronjobs, updateAdminCronjob } from "./service";
 import { dashboardRoutes } from "./Dashboard";
+import { reportRoutes } from "./Report";
 import { authenticateToken, requireAdmin } from "../../middlewares/jwt";
 
 export const routes = (): Router => {
     const router = Router();
 
     dashboardRoutes(router);
+    reportRoutes(router);
 
     router.get("/managers", authenticateToken, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
         try {

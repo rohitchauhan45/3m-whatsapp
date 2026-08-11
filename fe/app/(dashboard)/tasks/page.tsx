@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, Upload, CheckCircle2, XCircle, FileCheck, UserPlus, FilePenLine } from 'lucide-react';
+import { UploadZoneSkeleton } from '@/components/ui/skeletons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, isAdmin } from '@/lib/utils/auth';
 import { useToast } from '@/lib/providers/toast-provider';
@@ -398,10 +399,7 @@ function TasksPageContent() {
             }`}
           >
             {previewMutation.isPending ? (
-              <div className="flex flex-col items-center gap-3">
-                <Loader2 size={40} className="animate-spin text-gray-400" />
-                <p className="text-gray-600 font-medium">Reading file...</p>
-              </div>
+              <UploadZoneSkeleton />
             ) : (
               <div className="flex flex-col items-center gap-4">
                 <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">

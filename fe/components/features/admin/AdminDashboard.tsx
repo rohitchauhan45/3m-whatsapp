@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock,
+  Download,
   Eye,
   Loader2,
   MessageSquare,
@@ -23,6 +24,7 @@ import {
 import AddUserTaskModal from '@/components/features/admin/AddUserTaskModal';
 import Modal, { ModalDetailGrid, ModalDetailRow } from '@/components/ui/Modal';
 import Dropdown from '@/components/ui/Dropdown';
+import { AdminTableSkeleton } from '@/components/ui/skeletons';
 import {
   createTasksFromPreview,
   enrichPreviewRowsForCreate,
@@ -43,6 +45,7 @@ import {
   fetchTaskTable,
   fetchUserCards,
   fetchUserTable,
+  downloadTaskReport,
   formatShortDisplayDate,
   showsDateColumn,
   type PaginationMeta,
@@ -58,6 +61,7 @@ import {
   getUserStatusClassName,
 } from '@/lib/utils/status-styles';
 import { ui } from '@/lib/utils/ui-classes';
+import { getApiErrorMessage } from '@/lib/api/client';
 
 const TRUNCATE_LENGTH_DEFAULT = 40;
 const TRUNCATE_LENGTH_LARGE = 100;
@@ -523,6 +527,7 @@ export default function AdminDashboard({
   const [userDetailModal, setUserDetailModal] = useState<DashboardDailyTask | null>(null);
   const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatusFilter>('all');
   const [userStatusFilter, setUserStatusFilter] = useState<UserStatusFilter>('all');
+  const [reportDownloading, setReportDownloading] = useState(false);
   const truncateLength = useTruncateLength();
 
   const createTaskMutation = useMutation({
@@ -703,6 +708,8 @@ export default function AdminDashboard({
 
   const taskTimeRangeOptions = getTimeRangeOptions(taskTimeRange);
   const userTimeRangeOptions = getTimeRangeOptions(userTimeRange);
+  const reportDateLabel =
+    taskTimeRangeOptions.find((option) => option.value === taskTimeRange)?.label ?? 'Today';
   const showTaskDateCol = showsDateColumn(taskTimeRange);
   const showUserDateCol = showsDateColumn(userTimeRange);
   const isAllFilter = taskStatusFilter === 'all';
@@ -802,7 +809,8 @@ export default function AdminDashboard({
               )}
 
               {onAddTask && (
-                <div className="flex justify-end">
+                <div className="flex justify-end items-end gap-2">
+                  
                   <button
                     type="button"
                     onClick={onAddTask}
@@ -811,6 +819,31 @@ export default function AdminDashboard({
                     <Plus size={16} />
                     Add Task
                   </button>
+                  <div className="flex flex-col items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setReportDownloading(true);
+                        try {
+                          await downloadTaskReport(taskTimeRange);
+                          showToast('Report downloaded', 'success');
+                        } catch (err) {
+                          showError(getApiErrorMessage(err, 'Failed to download report'));
+                        } finally {
+                          setReportDownloading(false);
+                        }
+                      }}
+                      disabled={reportDownloading}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors shadow-md shadow-emerald-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {reportDownloading ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Download size={16} />
+                      )}
+                      Report
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -829,9 +862,7 @@ export default function AdminDashboard({
               />
 
               {isLoading ? (
-                <div className="flex justify-center py-16">
-                  <Loader2 className="animate-spin text-gray-400" size={28} />
-                </div>
+                <AdminTableSkeleton />
               ) : (
                 <>
                   <DataTableShell>
@@ -1100,9 +1131,7 @@ export default function AdminDashboard({
               />
 
               {isLoading ? (
-                <div className="flex justify-center py-16">
-                  <Loader2 className="animate-spin text-gray-400" size={28} />
-                </div>
+                <AdminTableSkeleton />
               ) : (
                 <>
                   <DataTableShell>

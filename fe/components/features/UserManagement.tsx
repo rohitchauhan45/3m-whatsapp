@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit, Trash2, Loader2, AlertCircle } from 'lucide-react';
+import { DataTableSkeleton } from '@/components/ui/skeletons';
 import Modal from '@/components/ui/Modal';
 import { useAuth, isAdmin } from '@/lib/utils/auth';
 import { getAllUsers, createUser, updateUser, deleteUser, type User, type CreateUserData, type UpdateUserData } from '@/lib/services/userService';
@@ -418,9 +419,7 @@ const UserManagement: React.FC = () => {
         )}
 
         {loading ? (
-          <div className="flex justify-center items-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-brand-pink" />
-          </div>
+          <DataTableSkeleton rows={8} columns={5} />
         ) : (
           <>
             <div className="overflow-x-auto">

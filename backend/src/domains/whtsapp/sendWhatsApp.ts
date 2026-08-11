@@ -315,7 +315,45 @@ export const sendWhatsappTemplate = async (data: whatsappTemplatepayload) => {
         return {
             success: false,
             status: 500,
-            message: axiosErrorPayload(error)
+            message: axiosErrorPayload(error),
+        };
+    }
+}
+
+export async function downloadWhatsAppMedia(mediaId: string): Promise<{
+    buffer: Buffer;
+    mimeType: string;
+} | null> {
+    if (!WHATSAPP_ACCESS_TOKEN || !mediaId.trim()) return null;
+
+    try {
+        const metaUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${mediaId.trim()}`;
+        const metaRes = await axios.get<{ url?: string; mime_type?: string }>(metaUrl, {
+            headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
+            validateStatus: () => true,
+        });
+
+        const mediaUrl = metaRes.data?.url;
+        if (!mediaUrl || metaRes.status < 200 || metaRes.status >= 300) {
+            return null;
         }
+
+        const fileRes = await axios.get<ArrayBuffer>(mediaUrl, {
+            headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
+            responseType: "arraybuffer",
+            validateStatus: () => true,
+        });
+
+        if (fileRes.status < 200 || fileRes.status >= 300) {
+            return null;
+        }
+
+        return {
+            buffer: Buffer.from(fileRes.data),
+            mimeType: metaRes.data.mime_type ?? "image/jpeg",
+        };
+    } catch (error) {
+        console.error("whatsapp media download failed", axiosErrorPayload(error));
+        return null;
     }
 }

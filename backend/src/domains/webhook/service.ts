@@ -4,6 +4,8 @@ import {
     handleFinalDecisionRemarkReason,
     handleFollowUp,
     handleFollowUpReply,
+    handlePhotoUploadChoice,
+    handleIncomingTaskPhoto,
     handleMenuButton,
     handleMenuText,
     handlePendigTaskUpdateText,
@@ -140,6 +142,13 @@ async function handleButtonAction(
         return;
     }
 
+    if (action === "cpyes" || action === "cpno" || action === "rpyes" || action === "rpno") {
+        const mode = action.startsWith("cp") ? "completed" : "remark";
+        const choice = action.endsWith("yes") ? "yes" : "no";
+        await handlePhotoUploadChoice(storedNumber, choice, id, mode);
+        return;
+    }
+
     if (action === "blocked" || action === "completed" || action === "hold") {
         await handlePreviousTaskFollowupStatus(id, storedNumber, action);
     }
@@ -215,6 +224,19 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
         const finalAbsentSaved = await handleFinalDecisionAbsentReason(user.number, textBody);
         if (finalAbsentSaved) return;
 
+        return;
+    }
+
+    if (type === "image" && isRecord(msg.image)) {
+        await touchConversation(user.id, user.number);
+
+        const mediaId = typeof msg.image.id === "string" ? msg.image.id : "";
+        const mimeType =
+            typeof msg.image.mime_type === "string" ? msg.image.mime_type : "image/jpeg";
+
+        if (mediaId) {
+            await handleIncomingTaskPhoto(user.number, mediaId, mimeType);
+        }
         return;
     }
 

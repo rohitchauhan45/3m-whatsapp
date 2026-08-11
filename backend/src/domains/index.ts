@@ -7,6 +7,7 @@ import { taskRoutes } from "./Task";
 import { adminRoutes } from "./admin";
 import { siteRoutes } from "./site";
 import { draftTaskRoutes } from "./DraftTask";
+import { projectRoutes } from "./Project";
 
 export default function defineRoutes(expressRouter: Router): void {
   authRoutes(expressRouter);
@@ -16,5 +17,6 @@ export default function defineRoutes(expressRouter: Router): void {
   taskRoutes(expressRouter);
   adminRoutes(expressRouter);
   siteRoutes(expressRouter);
-  draftTaskRoutes(expressRouter)
+  draftTaskRoutes(expressRouter);
+  projectRoutes(expressRouter);
 }

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Settings, Menu, Users, ArrowRight, X, LogOut, ChevronsLeft, ChevronsRight, ClipboardList, UserRound, MapPin } from 'lucide-react';
+import { LayoutDashboard, Settings, Menu, Users, ArrowRight, X, LogOut, ChevronsLeft, ChevronsRight, ClipboardList, UserRound, MapPin, FolderKanban } from 'lucide-react';
 import { useAuth, isAdmin } from '@/lib/utils/auth';
 import { ui } from '@/lib/utils/ui-classes';
 import PageHeader from '@/components/layout/PageHeader';
@@ -135,6 +135,9 @@ export default function DashboardLayout({
                 )}
                 {isAdmin(user) && (
                   <NavItem path="/sites" icon={MapPin} label="Site" collapsed={isCollapsed} />
+                )}
+                {isAdmin(user) && (
+                  <NavItem path="/projects" icon={FolderKanban} label="Project" collapsed={isCollapsed} />
                 )}
               </div>
             </div>

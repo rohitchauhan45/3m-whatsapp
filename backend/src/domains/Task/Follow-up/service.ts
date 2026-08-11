@@ -17,11 +17,17 @@ import { delayinprogressTaskMessagetoManager, delaystartTaskMessagetoManager } f
 import { notifyAdminError } from "../../../libraries/util/notifyAdminError";
 import { findActiveTaskUserByWhatsAppNumber } from "../shared";
 import { handlePreviousPendingTask } from "../Previous/service";
+import { saveTaskPhotoBuffer, type PhotoFileMode } from "../../../libraries/util/Task/multer";
+import { downloadWhatsAppMedia } from "../../whtsapp/sendWhatsApp";
 import type { TaskResult } from "../types";
 
 type choices = "inphourly" | "inpendtime" | "remark" | "done"
 type startChoice = "start" | "taskquery" | "delay"
 type FollowUpPendingStep = "howMuchComplete" | "extraTime" | "remarkReason";
+
+const PHOTO_UPLOAD_NO_MESSAGE = "okay no problem ! thanks for update";
+
+
 const FOLLOW_UP_PENDING_TTL_MS = 30 * 60 * 1000;
 
 const pendingFollowUpByUserId = new Map<
@@ -58,6 +64,41 @@ const getPendingFollowUp = (userId: string) => {
 const clearPendingFollowUp = (userId: string): void => {
     pendingFollowUpByUserId.delete(userId);
 }
+
+const pendingPhotoByUserId = new Map<
+    string,
+    { taskId: string; mode: PhotoFileMode; expiresAt: number }
+>();
+
+const pruneExpiredPhotoPending = (now = Date.now()): void => {
+    for (const [userId, entry] of pendingPhotoByUserId.entries()) {
+        if (entry.expiresAt <= now) pendingPhotoByUserId.delete(userId);
+    }
+};
+
+const setPendingPhotoUpload = (userId: string, taskId: string, mode: PhotoFileMode): void => {
+    pruneExpiredPhotoPending();
+    pendingPhotoByUserId.set(userId, {
+        taskId,
+        mode,
+        expiresAt: Date.now() + FOLLOW_UP_PENDING_TTL_MS,
+    });
+};
+
+const getPendingPhotoUpload = (userId: string) => {
+    pruneExpiredPhotoPending();
+    const entry = pendingPhotoByUserId.get(userId);
+    if (!entry || entry.expiresAt <= Date.now()) {
+        pendingPhotoByUserId.delete(userId);
+        return null;
+    }
+    return entry;
+};
+
+const clearPendingPhotoUpload = (userId: string): void => {
+    pendingPhotoByUserId.delete(userId);
+};
+
 const pendingStartTaskDelayTimeByUserId = new Map<string, string>();
 
 export const sendStartTask = async (
@@ -679,6 +720,15 @@ export const handleFollowUp = async (taskId: string, whatsappFrom: string, ch: c
                 message: "Thank you! Task marked as done.",
             });
 
+            await sendWhatsAppButtons({
+                number: whatsappFrom,
+                message: "you want to upload task completed photo ?",
+                buttons: [
+                    { title: "Yes", id: `cpyes_${taskId}` },
+                    { title: "No", id: `cpno_${taskId}` }
+                ]
+            })
+
             if (task.position > 1) {
                 await handlePreviousPendingTask(whatsappFrom, task.dailyTaskId, task.position)
             }
@@ -746,6 +796,15 @@ export const handleFollowUpReply = async (whatsappFrom: string, text: string): P
                 number: phone,
                 message: "Thank you! Remark reason saved.",
             });
+
+            await sendWhatsAppButtons({
+                number: whatsappFrom,
+                message: "you want to upload remark reason photo ?",
+                buttons: [
+                    { title: "Yes", id: `rpyes_${pending.taskId}` },
+                    { title: "No", id: `rpno_${pending.taskId}` }
+                ]
+            })
 
             if (task.position > 1) {
                 await handlePreviousPendingTask(whatsappFrom, task.dailyTaskId, task.position)
@@ -932,6 +991,118 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
         await sendMessageOnWhatsapp({
             number: from,
             message: "Could not save extra time. Please try again.",
+        });
+        return false;
+    }
+};
+
+export async function handlePhotoUploadChoice(
+    from: string,
+    choice: "yes" | "no",
+    taskId: string,
+    mode: PhotoFileMode,
+): Promise<void> {
+    const user = await findActiveTaskUserByWhatsAppNumber(from);
+    if (!user) return;
+
+    const task = await prisma.task.findFirst({
+        where: { id: taskId, userId: user.id, deletedAt: null },
+    });
+
+    if (!task) {
+        await sendMessageOnWhatsapp({ number: user.number, message: "Task not found." });
+        return;
+    }
+
+    if (choice === "no") {
+        await sendMessageOnWhatsapp({ number: user.number, message: PHOTO_UPLOAD_NO_MESSAGE });
+        return;
+    }
+
+    setPendingPhotoUpload(user.id, taskId, mode);
+    await sendMessageOnWhatsapp({
+        number: user.number,
+        message: "Please send photo now.",
+    });
+}
+
+export async function handleIncomingTaskPhoto(
+    from: string,
+    mediaId: string,
+    mimeType: string,
+): Promise<boolean> {
+    const user = await findActiveTaskUserByWhatsAppNumber(from);
+    if (!user) return false;
+
+    const pending = getPendingPhotoUpload(user.id);
+    if (!pending) return false;
+
+    const downloaded = await downloadWhatsAppMedia(mediaId);
+    if (!downloaded) {
+        await sendMessageOnWhatsapp({
+            number: user.number,
+            message: "Could not download photo. Please try again.",
+        });
+        return false;
+    }
+
+    return handlephoto(
+        pending.taskId,
+        downloaded.buffer,
+        from,
+        pending.mode,
+        downloaded.mimeType,
+    );
+}
+
+export const handlephoto = async (
+    tid: string,
+    file: Buffer,
+    from: string,
+    mode: PhotoFileMode,
+    mimeType = "image/jpeg",
+): Promise<boolean> => {
+    try {
+        const user = await findActiveTaskUserByWhatsAppNumber(from);
+        if (!user) return false;
+
+        const pending = getPendingPhotoUpload(user.id);
+        if (!pending || pending.taskId !== tid || pending.mode !== mode) {
+            return false;
+        }
+
+        const task = await prisma.task.findFirst({
+            where: { id: tid, userId: user.id, deletedAt: null },
+        });
+        if (!task) {
+            clearPendingPhotoUpload(user.id);
+            return false;
+        }
+
+        const fileUrl = await saveTaskPhotoBuffer(file, mimeType, mode);
+
+        await prisma.task.update({
+            where: { id: tid },
+            data:
+                mode === "remark"
+                    ? { remarkphoto: fileUrl }
+                    : { completedphoto: fileUrl },
+        });
+
+        clearPendingPhotoUpload(user.id);
+
+        await sendMessageOnWhatsapp({
+            number: user.number,
+            message: "Photo saved. Thank you!",
+        });
+
+        return true;
+    } catch (error) {
+        logger.error("Error while save photo !", error);
+        await notifyAdminError("while handle photo : ");
+        await sendMessageOnWhatsapp({
+            number: from,
+            message: "Could not save photo. Please try again.",
         });
         return false;
     }

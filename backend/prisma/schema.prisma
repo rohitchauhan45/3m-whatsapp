@@ -69,6 +69,20 @@ enum Setting{
   onTrackmsg
 }
 
+enum ProjectTaskType {
+  GROUP
+  TASK
+  MILESTONE
+}
+
+enum ProjectTaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+  CANCELLED
+}
+
 model User{
   id               String                 @id @default(cuid())
   name             String   
@@ -100,6 +114,7 @@ model User{
   adminSetting     AdminSettings[]
   createdsites     Site[]                 @relation("Createdsites")
   draft            DraftTask[]            @relation("CreatedDraft")
+  createdProject   Project[]              @relation("CreatedProject")
   sitelocations    UserSite[]
 
   @@index([parentId])
@@ -180,6 +195,9 @@ model Task {
   lasthold         DateTime?
 
   completedAt      DateTime?
+
+  remarkphoto      String?
+  completedphoto   String?
 
   //normal details for dashbboard
   createdAt        DateTime         @default(now())
@@ -289,4 +307,82 @@ model UserSite {
   site      Site     @relation(fields:[siteId] , references:[id])
 
   @@unique([userId,siteId])
+}
+
+model Project {
+  id           String         @id @default(cuid())
+
+  name         String
+  description  String?
+
+  plannedStart DateTime?
+  plannedEnd   DateTime?
+
+  actualStart  DateTime?
+  actualEnd    DateTime?
+
+  projectTasks ProjectTask[]        
+ 
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime?     @updatedAt
+
+  createdById  String        
+  createdBy    User          @relation("CreatedProject" , fields:[createdById] , references:[id])
+}
+
+model ProjectTask {
+  id            String            @id @default(cuid())
+
+  //project
+  projectId     String
+  project       Project           @relation(fields:[projectId] , references:[id] , onDelete: Cascade)
+
+
+  //Recursive hierarchy 
+  parentId      String?
+
+  parent        ProjectTask?      @relation("ProjectTaskHierarchy" , fields:[parentId] , references:[id] , onDelete: Cascade)   
+
+  children      ProjectTask[]     @relation("ProjectTaskHierarchy") 
+ 
+  //Basic
+  name          String
+  description   String?
+  
+  //1 1.1 1.2 1.2.1 etc.
+  code          String?
+
+  // order for inside parent
+  position      Int               @default(0)
+
+  type          ProjectTaskType   @default(TASK)
+
+  assigneedId   String?
+
+  //schedule
+  plannedStart  DateTime?  
+  plannedEnd    DateTime?
+
+  actualStart   DateTime?
+  actualEnd     DateTime?
+
+  // for calculation
+  durationdays  Int?
+
+  //work quantity
+  totalQty      Decimal?          @db.Decimal(12,3)
+  completedQty  Decimal?          @db.Decimal(12,3)
+
+  //work completed in percentage
+  completionpt  Decimal?          @db.Decimal(5,2)
+
+  status        ProjectTaskStatus @default(PENDING)
+
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime?         @updatedAt
+  deletedAt     DateTime? 
+
+  @@index([projectId])
+  @@index([parentId])
+  @@index([projectId,parentId,position])
 }

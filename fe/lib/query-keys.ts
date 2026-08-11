@@ -17,7 +17,23 @@ export const queryKeys = {
   sites: ['sites'] as const,
   siteDetail: (siteId: string) => ['sites', siteId] as const,
   siteAssignableUsers: (siteId: string) => ['sites', siteId, 'assignable-users'] as const,
+  projects: ['projects'] as const,
+  projectDetail: (projectId: string) => ['projects', projectId] as const,
+  projectTaskBranch: (projectId: string, taskId: string) =>
+    ['projects', projectId, 'tasks', taskId] as const,
 } as const;
+
+export function invalidateProjectQueries(
+  queryClient: QueryClient,
+  projectId: string,
+  taskId?: string,
+) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.projectDetail(projectId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+  if (taskId) {
+    queryClient.invalidateQueries({ queryKey: queryKeys.projectTaskBranch(projectId, taskId) });
+  }
+}
 
 export function invalidateDashboardQueries(queryClient: QueryClient) {
   return queryClient.refetchQueries({

@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Crosshair, Loader2, MapPin, MoreVertical, Plus } from 'lucide-react';
+import { Building2, Crosshair, Loader2, MapPin, Plus } from 'lucide-react';
+import EntitySummaryCard from '@/components/ui/EntitySummaryCard';
+import { EntityCardGridSkeleton } from '@/components/ui/skeletons';
 import SiteMapPicker, { SITE_MAP_HEIGHT_PX } from '@/components/features/site/SiteMapPicker';
 import { useToast } from '@/lib/providers/toast-provider';
 import { usePageHeader } from '@/lib/utils/page-header-context';
@@ -141,56 +142,35 @@ function SiteCard({ site }: Readonly<{ site: Site }>) {
   const addressLines = formatAddressDisplayLines(site.address);
 
   return (
-    <Link
+    <EntitySummaryCard
       href={`/sites/${site.id}`}
-      className="block rounded-xl border border-gray-200 bg-white shadow-sm transition-all hover:border-gray-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30"
-    >
-      <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-4">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-500">
-            <Building2 size={23} className="text-white" strokeWidth={2} />
-          </div>
-          <div className="min-w-0">
-            <h3 className="text-[20px] font-semibold text-slate-700 leading-tight">{site.name}</h3>
-            <p className="text-sm text-gray-500">{formatSiteStatusLabel(site.status)}</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="shrink-0 rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600"
-          aria-label="Site options"
-          onClick={(e) => e.preventDefault()}
-        >
-          <MoreVertical size={18} />
-        </button>
-      </div>
-
-      <div className="space-y-4 border-t border-gray-100 px-7 py-4">
-        <div className="flex items-start gap-3">
-          <MapPin size={21} className="mt-0.5 shrink-0 text-blue-500" strokeWidth={2} />
-          <div className="min-w-0 space-y-0.5">
-            {addressLines.map((line, index) => (
-              <p
-                key={`${site.id}-address-${index}`}
-                className="text-[15px] leading-relax text-gray-700"
-              >
-                {line}
-              </p>
-            ))}
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <Crosshair size={17} className="shrink-0 text-blue-500" strokeWidth={2} />
-          <p className="text-[14px] tabular-nums text-gray-600">
-            {site.latitude.toFixed(6)}, {site.longitude.toFixed(6)}
-          </p>
-        </div>
-      </div>
-
-      <div className="border-t border-gray-100 px-6 py-3">
-        <p className="text-[13px] text-gray-500">Created : {formatSiteCreatedDate(site.createdAt)}</p>
-      </div>
-    </Link>
+      icon={Building2}
+      iconBgClassName="bg-slate-500"
+      title={site.name}
+      subtitle={formatSiteStatusLabel(site.status)}
+      showOptionsButton
+      metaRows={[
+        {
+          icon: MapPin,
+          content: (
+            <div className="space-y-0.5">
+              {addressLines.map((line, index) => (
+                <p key={`${site.id}-address-${index}`}>{line}</p>
+              ))}
+            </div>
+          ),
+        },
+        {
+          icon: Crosshair,
+          content: (
+            <p className="text-[14px] tabular-nums text-gray-600">
+              {site.latitude.toFixed(6)}, {site.longitude.toFixed(6)}
+            </p>
+          ),
+        },
+      ]}
+      footer={`Created : ${formatSiteCreatedDate(site.createdAt)}`}
+    />
   );
 }
 
@@ -419,9 +399,7 @@ export default function SiteManagement() {
       </div>
 
       {isLoading ? (
-        <div className="flex min-h-[480px] items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50/50">
-          <Loader2 className="animate-spin text-gray-400" size={28} />
-        </div>
+        <EntityCardGridSkeleton count={6} />
       ) : isEmpty ? (
         <div
           className="flex min-h-[520px] w-full items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50/40 px-8 py-16"

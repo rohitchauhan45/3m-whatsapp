@@ -1,6 +1,7 @@
 'use client';
 
-import { Calendar, Loader2, Plus, Users } from 'lucide-react';
+import { Calendar, Plus, Users } from 'lucide-react';
+import { TaskDayCardsSkeleton } from '@/components/ui/skeletons';
 import type { AdminTaskDay } from '@/lib/services/taskService';
 import type { DraftTaskCard } from '@/lib/utils/draftTaskCards';
 import { formatTaskTabDate } from '@/lib/utils/taskTabDate';
@@ -122,11 +123,7 @@ export default function TaskDayCards({
         </button>
       </div>
 
-      {isLoading && (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 size={28} className="animate-spin text-gray-400" />
-        </div>
-      )}
+      {isLoading && <TaskDayCardsSkeleton count={5} />}
 
       {!isLoading && isEmpty && (
         <div className="text-center py-20">

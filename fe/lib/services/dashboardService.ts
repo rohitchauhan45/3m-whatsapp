@@ -181,6 +181,31 @@ export async function fetchUserCards(time: TimeRange) {
   return data.data;
 }
 
+export async function downloadTaskReport(time: TimeRange): Promise<void> {
+  const response = await apiClient.get('/admin/report/tasks', {
+    params: { time },
+    responseType: 'blob',
+  });
+
+  const blob = new Blob([response.data], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+
+  const disposition = response.headers['content-disposition'];
+  const filenameMatch =
+    typeof disposition === 'string' ? disposition.match(/filename="([^"]+)"/) : null;
+  const filename = filenameMatch?.[1] ?? 'report.xlsx';
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function fetchUserTable(query: UserTableQuery) {
   const { data } = await apiClient.get<{
     dailyTasks: DashboardDailyTask[];
