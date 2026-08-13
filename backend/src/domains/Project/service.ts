@@ -594,6 +594,10 @@ export async function updateProjectTask(
     }
 }
 
+function taskCodeDepth(code: string): number {
+    return code.split(".").length;
+}
+
 async function persistProjectWithTasks(
     importRows: ProjectImportRow[],
     meta: CreateProjectMetaInput,
@@ -601,70 +605,95 @@ async function persistProjectWithTasks(
 ): Promise<{ projectId: string; taskCount: number }> {
     const codeSet = new Set(importRows.map((row) => row.code));
     const dates = projectDateRange(importRows);
-    const positionByParent = new Map<string | null, number>();
+    const rowsByDepth = new Map<number, ProjectImportRow[]>();
 
-    return prisma.$transaction(async (tx) => {
-        const project = await tx.project.create({
-            data: {
-                name: meta.name,
-                description: meta.description?.trim() || null,
-                plannedStart: dates.plannedStart,
-                plannedEnd: dates.plannedEnd,
-                actualStart: dates.actualStart,
-                actualEnd: dates.actualEnd,
-                createdById: adminId,
-            },
-            select: { id: true },
-        });
+    for (const row of importRows) {
+        const depth = taskCodeDepth(row.code);
+        const bucket = rowsByDepth.get(depth);
+        if (bucket) {
+            bucket.push(row);
+        } else {
+            rowsByDepth.set(depth, [row]);
+        }
+    }
 
-        const codeToId = new Map<string, string>();
+    const depths = [...rowsByDepth.keys()].sort((a, b) => a - b);
 
-        for (const row of importRows) {
-            const parentCode = getParentProjectTaskCode(row.code);
-            const parentId = parentCode ? codeToId.get(parentCode) : null;
-
-            if (parentCode && !parentId) {
-                throw new AppError(
-                    "Validation error",
-                    `Parent task "${parentCode}" is missing for row ${row.startRow}`,
-                    400,
-                );
-            }
-
-            const positionKey = parentId ?? null;
-            const position = positionByParent.get(positionKey) ?? 0;
-            positionByParent.set(positionKey, position + 1);
-
-            const created = await tx.projectTask.create({
+    return prisma.$transaction(
+        async (tx) => {
+            const project = await tx.project.create({
                 data: {
-                    projectId: project.id,
-                    parentId,
-                    name: row.name,
-                    description: row.assigneeName ? `Assignee: ${row.assigneeName}` : null,
-                    code: row.code,
-                    position,
-                    type: inferTaskType(row.code, codeSet),
-                    plannedStart: row.plannedStart,
-                    plannedEnd: row.plannedEnd,
-                    actualStart: row.actualStart,
-                    actualEnd: row.actualEnd,
-                    durationdays: row.durationDays,
-                    totalQty: toDecimalOrNull(row.totalQty),
-                    completedQty: toDecimalOrNull(row.completedQty),
-                    completionpt: toDecimalOrNull(row.completionPct),
-                    status: inferTaskStatus(row.completionPct),
+                    name: meta.name,
+                    description: meta.description?.trim() || null,
+                    plannedStart: dates.plannedStart,
+                    plannedEnd: dates.plannedEnd,
+                    actualStart: dates.actualStart,
+                    actualEnd: dates.actualEnd,
+                    createdById: adminId,
                 },
                 select: { id: true },
             });
 
-            codeToId.set(row.code, created.id);
-        }
+            const codeToId = new Map<string, string>();
+            const positionByParent = new Map<string | null, number>();
 
-        return {
-            projectId: project.id,
-            taskCount: importRows.length,
-        };
-    }); 
+            for (const depth of depths) {
+                const levelRows = rowsByDepth.get(depth) ?? [];
+                const levelData = levelRows.map((row) => {
+                    const parentCode = getParentProjectTaskCode(row.code);
+                    const parentId = parentCode ? codeToId.get(parentCode) ?? null : null;
+
+                    if (parentCode && !parentId) {
+                        throw new AppError(
+                            "Validation error",
+                            `Parent task "${parentCode}" is missing for row ${row.startRow}`,
+                            400,
+                        );
+                    }
+
+                    const positionKey = parentId ?? null;
+                    const position = positionByParent.get(positionKey) ?? 0;
+                    positionByParent.set(positionKey, position + 1);
+
+                    return {
+                        projectId: project.id,
+                        parentId,
+                        name: row.name,
+                        description: row.assigneeName ? `Assignee: ${row.assigneeName}` : null,
+                        code: row.code,
+                        position,
+                        type: inferTaskType(row.code, codeSet),
+                        plannedStart: row.plannedStart,
+                        plannedEnd: row.plannedEnd,
+                        actualStart: row.actualStart,
+                        actualEnd: row.actualEnd,
+                        durationdays: row.durationDays,
+                        totalQty: toDecimalOrNull(row.totalQty),
+                        completedQty: toDecimalOrNull(row.completedQty),
+                        completionpt: toDecimalOrNull(row.completionPct),
+                        status: inferTaskStatus(row.completionPct),
+                    };
+                });
+
+                const created = await tx.projectTask.createManyAndReturn({
+                    data: levelData,
+                    select: { id: true, code: true },
+                });
+
+                for (const task of created) {
+                    if (task.code) {
+                        codeToId.set(task.code, task.id);
+                    }
+                }
+            }
+
+            return {
+                projectId: project.id,
+                taskCount: importRows.length,
+            };
+        },
+        { timeout: 60_000, maxWait: 10_000 },
+    );
 }
 
 export async function createProjectFromBuffer(

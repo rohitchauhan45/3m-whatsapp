@@ -184,7 +184,7 @@ export const sendWhatsAppButtons = async (data: SendWhatsAppButtonPayload) => {
             }
         );
 
-        if (response.status >= 200 && response.status < 300) {
+        if (response.status >= 200 && response.status < 300) {  
             const id = response.data.messages?.[0]?.id;
             if (id) return { success: true, status: 200, message: id };
             return {
@@ -198,7 +198,7 @@ export const sendWhatsAppButtons = async (data: SendWhatsAppButtonPayload) => {
             success: false,
             status: response.status,
             message: JSON.stringify(response.data),
-        };
+        };  
     } catch (error: unknown) {
         console.error("WhatsApp interactive send failed:", axiosErrorPayload(error));
         return {
