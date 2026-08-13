@@ -15,7 +15,7 @@ type ToastProps = ToastData & {
 
 export default function Toast({ message, type, onClose }: ToastProps) {
   return (
-    <div className="fixed top-6 right-6 z-50 animate-slide-up">
+    <div className="fixed top-6 right-6 z-50 animate-slide-up max-md:left-4 max-md:right-4 max-md:top-20">
       <div
         className={`flex items-center gap-2 px-3 py-3 rounded-xl shadow-lg border ${
           type === 'success'
@@ -28,7 +28,7 @@ export default function Toast({ message, type, onClose }: ToastProps) {
         ) : (
           <XCircle size={18} className="text-red-500" />
         )}
-        <span className="text-sm font-medium whitespace-pre-wrap max-w-md">{message}</span>
+        <span className="text-sm font-medium whitespace-pre-wrap max-w-md max-md:max-w-none">{message}</span>
       </div>
     </div>
   );

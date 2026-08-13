@@ -9,8 +9,8 @@ export const SITE_MAP_HEIGHT_PX = 560;
 
 const MAP_CONTAINER_STYLE: React.CSSProperties = {
   width: '100%',
-  height: `${SITE_MAP_HEIGHT_PX}px`,
-  minHeight: `${SITE_MAP_HEIGHT_PX}px`,
+  height: '100%',
+  minHeight: '280px',
 };
 const MAP_LIBRARIES: Libraries = ['marker'];
 const MAP_ID = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID?.trim() || 'DEMO_MAP_ID';
@@ -189,10 +189,7 @@ export default function SiteMapPicker({
 
   if (loadError) {
     return (
-      <div
-        className="flex items-center justify-center rounded-2xl border border-red-100 bg-red-50 px-6 text-center text-sm text-red-700"
-        style={{ height: SITE_MAP_HEIGHT_PX }}
-      >
+      <div className="flex items-center justify-center rounded-2xl border border-red-100 bg-red-50 px-6 text-center text-sm text-red-700 h-[280px] md:h-[560px]">
         Could not load Google Maps script. Check your API key, billing, and HTTP referrer restrictions
         for <code className="text-xs">http://localhost:4005/*</code>.
       </div>
@@ -201,22 +198,16 @@ export default function SiteMapPicker({
 
   if (!isLoaded || !position) {
     return (
-      <div
-        className="flex items-center justify-center rounded-2xl border border-gray-200 bg-gray-50"
-        style={{ height: SITE_MAP_HEIGHT_PX }}
-      >
+      <div className="flex items-center justify-center rounded-2xl border border-gray-200 bg-gray-50 h-[280px] md:h-[560px]">
         <Loader2 className="animate-spin text-gray-400" size={28} />
       </div>
     );
   }
 
   return (
-    <div
-      className="relative rounded-2xl border border-gray-200 bg-gray-100"
-      style={{ height: SITE_MAP_HEIGHT_PX }}
-    >
+    <div className="relative rounded-2xl border border-gray-200 bg-gray-100 h-[280px] md:h-[560px]">
       {mapInstance && (
-        <div className="absolute left-4 right-4 top-4 z-[1000] overflow-visible">
+        <div className="absolute left-4 right-4 top-4 z-[1000] overflow-visible max-md:left-2 max-md:right-2 max-md:top-2">
           <LocationSearch
             map={mapInstance}
             onLocationSelect={handleLocationSelect}

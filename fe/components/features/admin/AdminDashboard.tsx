@@ -1,14 +1,17 @@
 'use client';
 
-import { useEffect, useState, Fragment } from 'react';
+import { useEffect, useRef, useState, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2,
   ClipboardList,
   Clock,
+  ChevronDown,
   Download,
   Eye,
+  FileSpreadsheet,
+  FileText,
   Loader2,
   MessageSquare,
   Pencil,
@@ -46,6 +49,7 @@ import {
   fetchUserCards,
   fetchUserTable,
   downloadTaskReport,
+  type ReportFileFormat,
   formatShortDisplayDate,
   showsDateColumn,
   type PaginationMeta,
@@ -272,8 +276,8 @@ function TableFilters({
 }) {
   return (
     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
-      <div>{leftSlot}</div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
+      <div className="max-md:w-full max-md:overflow-x-auto">{leftSlot}</div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 max-md:w-full">
         {rightSlot}
         <div className="relative w-full sm:w-64">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -379,7 +383,7 @@ const EMPTY_ROW_HEIGHT = 'h-[380px]';
 function DataTableShell({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className={`overflow-x-auto border border-gray-200 rounded-xl bg-white ${TABLE_MIN_HEIGHT}`}
+      className={`overflow-x-auto border border-gray-200 rounded-xl bg-white ${TABLE_MIN_HEIGHT} max-md:-mx-4 max-md:rounded-none max-md:border-x-0`}
     >
       {children}
     </div>
@@ -528,6 +532,8 @@ export default function AdminDashboard({
   const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatusFilter>('all');
   const [userStatusFilter, setUserStatusFilter] = useState<UserStatusFilter>('all');
   const [reportDownloading, setReportDownloading] = useState(false);
+  const [reportMenuOpen, setReportMenuOpen] = useState(false);
+  const reportMenuRef = useRef<HTMLDivElement>(null);
   const truncateLength = useTruncateLength();
 
   const createTaskMutation = useMutation({
@@ -647,6 +653,32 @@ export default function AdminDashboard({
   useEffect(() => {
     setPage(1);
   }, [taskTimeRange, userTimeRange, taskStatusFilter, userStatusFilter, search, tab]);
+
+  useEffect(() => {
+    if (!reportMenuOpen) return;
+
+    const onMouseDown = (event: MouseEvent) => {
+      if (reportMenuRef.current && !reportMenuRef.current.contains(event.target as Node)) {
+        setReportMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [reportMenuOpen]);
+
+  const handleDownloadReport = async (format: ReportFileFormat) => {
+    setReportMenuOpen(false);
+    setReportDownloading(true);
+    try {
+      await downloadTaskReport(taskTimeRange, format);
+      showToast('Report downloaded', 'success');
+    } catch (err) {
+      showError(getApiErrorMessage(err, 'Failed to download report'));
+    } finally {
+      setReportDownloading(false);
+    }
+  };
 
   const taskCardsQuery = useQuery({
     queryKey: queryKeys.dashboard.taskCards(taskTimeRange),
@@ -809,32 +841,22 @@ export default function AdminDashboard({
               )}
 
               {onAddTask && (
-                <div className="flex justify-end items-end gap-2">
+                <div className="flex justify-end items-end gap-2 max-md:w-full max-md:flex-wrap">
                   
                   <button
                     type="button"
                     onClick={onAddTask}
-                    className={ui.btnPrimary}
+                    className={`${ui.btnPrimary} max-md:flex-1`}
                   >
                     <Plus size={16} />
                     Add Task
                   </button>
-                  <div className="flex flex-col items-center gap-1">
+                  <div ref={reportMenuRef} className="relative max-md:flex-1">
                     <button
                       type="button"
-                      onClick={async () => {
-                        setReportDownloading(true);
-                        try {
-                          await downloadTaskReport(taskTimeRange);
-                          showToast('Report downloaded', 'success');
-                        } catch (err) {
-                          showError(getApiErrorMessage(err, 'Failed to download report'));
-                        } finally {
-                          setReportDownloading(false);
-                        }
-                      }}
+                      onClick={() => setReportMenuOpen((open) => !open)}
                       disabled={reportDownloading}
-                      className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors shadow-md shadow-emerald-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors shadow-md shadow-emerald-500/25 disabled:opacity-50 disabled:cursor-not-allowed max-md:w-full"
                     >
                       {reportDownloading ? (
                         <Loader2 size={16} className="animate-spin" />
@@ -842,7 +864,36 @@ export default function AdminDashboard({
                         <Download size={16} />
                       )}
                       Report
+                      <ChevronDown size={16} />
                     </button>
+                    {reportMenuOpen && (
+                      <div className="absolute right-0 z-50 mt-2 w-40 rounded-2xl border border-gray-200 bg-white p-2 shadow-xl">
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadReport('xlsx')}
+                          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-emerald-50"
+                        >
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                            <FileSpreadsheet size={19} />
+                          </span>
+                          <span>
+                            <span className="block text-sm font-semibold text-gray-800">Excel</span>
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadReport('pdf')}
+                          className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-red-50"
+                        >
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-600">
+                            <FileText size={19} />
+                          </span>
+                          <span>
+                            <span className="block text-sm font-semibold text-gray-800">PDF</span>
+                          </span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -866,7 +917,7 @@ export default function AdminDashboard({
               ) : (
                 <>
                   <DataTableShell>
-                    <table className="w-full text-base table-fixed">
+                    <table className="w-full text-base table-fixed max-md:min-w-[880px]">
                       <colgroup>
                         <col style={{ width: isAllFilter ? '14%' : '16%' }} />
                         <col
@@ -1051,7 +1102,7 @@ export default function AdminDashboard({
                       </tbody>
                     </table>
                   </DataTableShell>
-                  <div className="flex items-center justify-between gap-4 pt-4">
+                  <div className="flex items-center justify-between gap-4 pt-4 max-md:flex-col max-md:items-stretch">
                     <div className="min-w-0">
                       {taskTableQuery.data?.pagination && (
                         <PaginationBar
@@ -1067,7 +1118,7 @@ export default function AdminDashboard({
                     <button
                       type="button"
                       onClick={() => setAddUserOpen(true)}
-                      className={ui.btnPrimary}
+                      className={`${ui.btnPrimary} max-md:w-full`}
                     >
                       <UserPlus size={16} />
                       Add User
@@ -1081,7 +1132,7 @@ export default function AdminDashboard({
 
         {/* USER TAB */}
         {tab === 'user' && (
-          <div className="space-y-12 flex flex-col flex-1 min-h-0">
+          <div className="space-y-12 max-md:space-y-6 flex flex-col flex-1 min-h-0">
             {userCardsQuery.data && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                 <StatCard
@@ -1135,7 +1186,7 @@ export default function AdminDashboard({
               ) : (
                 <>
                   <DataTableShell>
-                    <table className="w-full text-base table-fixed">
+                    <table className="w-full text-base table-fixed max-md:min-w-[880px]">
                       <colgroup>
                         {isUserAllFilter ? (
                           <>
@@ -1354,12 +1405,12 @@ export default function AdminDashboard({
           ) : null
         }
         footer={
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 max-md:flex-col">
             <button
               type="button"
               onClick={() => setAddTaskForm(null)}
               disabled={createTaskMutation.isPending}
-              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 max-md:w-full"
             >
               Cancel
             </button>
@@ -1372,7 +1423,7 @@ export default function AdminDashboard({
                 !addTaskForm?.start.trim() ||
                 !addTaskForm?.end.trim()
               }
-              className={ui.btnPrimary}
+              className={`${ui.btnPrimary} max-md:w-full`}
             >
               {createTaskMutation.isPending ? (
                 <>
@@ -1443,12 +1494,12 @@ export default function AdminDashboard({
           ) : null
         }
         footer={
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 max-md:flex-col">
             <button
               type="button"
               onClick={() => setTaskEditForm(null)}
               disabled={editTaskMutation.isPending}
-              className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 disabled:opacity-50"
+              className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 disabled:opacity-50 max-md:w-full"
             >
               Cancel
             </button>
@@ -1461,7 +1512,7 @@ export default function AdminDashboard({
                 !taskEditForm?.start.trim() ||
                 !taskEditForm?.end.trim()
               }
-              className={ui.btnPrimary}
+              className={`${ui.btnPrimary} max-md:w-full`}
             >
               {editTaskMutation.isPending ? (
                 <>

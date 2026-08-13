@@ -115,9 +115,9 @@ export default function TaskDayCards({
 
   return (
     <div className="animate-fade-in">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Tasks</h1>
-        <button type="button" onClick={onAddTask} className={ui.btnPrimary}>
+      <div className="flex items-center justify-between gap-3 mb-8 max-md:mb-5">
+        <h1 className="min-w-0 truncate text-2xl font-bold text-gray-900">Tasks</h1>
+        <button type="button" onClick={onAddTask} className={`${ui.btnPrimary} max-md:shrink-0`}>
           <Plus size={16} />
           Add Task
         </button>
@@ -136,7 +136,7 @@ export default function TaskDayCards({
       )}
 
       {!isLoading && !isEmpty && (
-        <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 lg:grid-cols-5">
           {draftCards.map((card) => (
             <DraftCard key={card.key} card={card} onSelect={() => onSelectDraft(card)} />
           ))}

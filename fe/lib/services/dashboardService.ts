@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api/client';
-import { formatTaskTabDate } from '@/lib/utils/taskTabDate';
+import { formatTaskTabDate, IST_OFFSET_MS } from '@/lib/utils/taskTabDate';
 
 export type PresetTimeRange =
   | 'today'
@@ -181,20 +181,39 @@ export async function fetchUserCards(time: TimeRange) {
   return data.data;
 }
 
-export async function downloadTaskReport(time: TimeRange): Promise<void> {
+export type ReportFileFormat = 'xlsx' | 'pdf';
+
+function reportDateLabel(time: TimeRange): string {
+  if (isCalendarDateLabel(time)) return time.trim();
+
+  const ist = new Date(Date.now() + IST_OFFSET_MS);
+  const shiftDays = time === 'yesterday' ? -1 : time === 'tomorrow' ? 1 : 0;
+  ist.setUTCDate(ist.getUTCDate() + shiftDays);
+
+  const day = String(ist.getUTCDate()).padStart(2, '0');
+  const month = String(ist.getUTCMonth() + 1).padStart(2, '0');
+  return `${day}-${month}-${ist.getUTCFullYear()}`;
+}
+
+export async function downloadTaskReport(
+  time: TimeRange,
+  format: ReportFileFormat = 'xlsx',
+): Promise<void> {
   const response = await apiClient.get('/admin/report/tasks', {
-    params: { time },
+    params: { time, format },
     responseType: 'blob',
   });
 
   const blob = new Blob([response.data], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    type: format === 'pdf'
+      ? 'application/pdf'
+      : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
 
   const disposition = response.headers['content-disposition'];
   const filenameMatch =
-    typeof disposition === 'string' ? disposition.match(/filename="([^"]+)"/) : null;
-  const filename = filenameMatch?.[1] ?? 'report.xlsx';
+    typeof disposition === 'string' ? /filename="([^"]+)"/.exec(disposition) : null;
+  const filename = filenameMatch?.[1] ?? `report_${reportDateLabel(time)}.${format}`;
 
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

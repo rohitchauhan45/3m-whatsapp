@@ -49,7 +49,7 @@ export default function ProjectManagement() {
         <EntityCardGridSkeleton count={6} />
       ) : isEmpty ? (
         <div
-          className="flex min-h-[520px] w-full items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50/40 px-8 py-16"
+          className="flex min-h-[520px] w-full items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50/40 px-8 py-16 max-md:min-h-[240px] max-md:px-4 max-md:py-10"
         >
           <div className="text-center max-w-md">
             <FolderKanban className="mx-auto mb-4 text-gray-300" size={40} strokeWidth={1.5} />

@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Poppins } from 'next/font/google';
 import { AuthProvider } from '@/lib/utils/auth';
 import QueryProvider from '@/lib/providers/query-provider';
@@ -15,6 +15,12 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: 'Admin Dashboard',
   description: 'Admin Dashboard',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({

@@ -55,11 +55,11 @@ export default function Dropdown({
   };
 
   return (
-    <div ref={ref} className={`relative inline-block ${className}`}>
+    <div ref={ref} className={`relative inline-block max-md:w-full ${className}`}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center justify-between gap-2 min-w-[150px] px-4 py-2.5 text-sm font-medium text-gray-800 bg-gray-50 border border-gray-200 rounded-full hover:bg-gray-100 transition-colors duration-200"
+        className="flex items-center justify-between gap-2 min-w-[150px] max-md:w-full px-4 py-2.5 text-sm font-medium text-gray-800 bg-gray-50 border border-gray-200 rounded-full hover:bg-gray-100 transition-colors duration-200"
         aria-haspopup="listbox"
         aria-expanded={open}
       >

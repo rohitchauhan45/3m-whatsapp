@@ -195,12 +195,12 @@ export default function AddUserTaskModal({
           ) : (
             <span />
           )}
-          <div className="flex justify-end gap-3 shrink-0">
+          <div className="flex justify-end gap-3 shrink-0 max-md:flex-col max-md:w-full">
             <button
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 max-md:w-full"
             >
               Cancel
             </button>
@@ -208,7 +208,7 @@ export default function AddUserTaskModal({
               type="button"
               onClick={onCreateClick}
               disabled={isSubmitting}
-              className={ui.btnPrimary}
+              className={`${ui.btnPrimary} max-md:w-full`}
             >
               {isSubmitting ? (
                 <>

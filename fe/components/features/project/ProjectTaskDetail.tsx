@@ -84,16 +84,14 @@ export default function ProjectTaskDetailView({
   }
 
   const handleToggleEdit = () => {
-    setEditMode((open) => {
-      if (open) setEditingTask(null);
-      return !open;
-    });
+    if (editMode) setEditingTask(null);
+    setEditMode((open) => !open);
   };
 
   return (
     <div className="animate-fade-in space-y-4">
       <div className="flex justify-end">
-        <button type="button" onClick={handleToggleEdit} className={ui.btnPrimary}>
+        <button type="button" onClick={handleToggleEdit} className={`${ui.btnPrimary} max-md:w-full`}>
           <Pencil size={16} />
           {editMode ? 'Done' : 'Edit'}
         </button>
@@ -105,7 +103,7 @@ export default function ProjectTaskDetailView({
             <p className="text-base text-gray-500">Task {branch.task.code}</p>
             <ProjectStatusLabel status={branch.task.status} className="text-sm font-semibold" />
           </div>
-          <h2 className="mt-1 text-2xl font-semibold text-brand-primary leading-tight">
+          <h2 className="mt-1 text-xl md:text-2xl font-semibold text-brand-primary leading-tight break-words">
             {branch.task.name}
           </h2>
           <p className="mt-2 text-base text-gray-500">

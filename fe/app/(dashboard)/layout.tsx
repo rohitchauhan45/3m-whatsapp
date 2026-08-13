@@ -61,16 +61,18 @@ export default function DashboardLayout({
     <PageHeaderProvider>
     <div className="flex h-dvh overflow-hidden transition-colors duration-300 md:p-4 md:gap-4">
       {/* Mobile Header */}
-      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 z-40 flex items-center justify-between px-4">
-        <div className="flex items-center space-x-2.5">
-          <span className="font-bold text-lg tracking-tight text-gray-900">Admin</span>
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 pt-[env(safe-area-inset-top)]">
+        <div className="h-16 flex items-center justify-between px-4">
+          <div className="flex items-center space-x-2.5">
+            <span className="font-bold text-lg tracking-tight text-gray-900">Admin</span>
+          </div>
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="p-2 text-gray-500 hover:text-gray-900 active:scale-95 transition-transform"
+          >
+            <Menu size={24} />
+          </button>
         </div>
-        <button 
-          onClick={() => setIsMobileMenuOpen(true)} 
-          className="p-2 text-gray-500 hover:text-gray-900 active:scale-95 transition-transform"
-        >
-          <Menu size={24} />
-        </button>
       </div>
 
       {/* Sidebar Overlay (Mobile) */}
@@ -171,11 +173,11 @@ export default function DashboardLayout({
                       </span>
                     </div>
                     {!isCollapsed && (
-                      <div className="text-left">
-                        <p className="text-sm font-semibold text-gray-900">
+                      <div className="min-w-0 text-left">
+                        <p className="text-sm font-semibold text-gray-900 truncate">
                           {user?.name || 'User'}
                         </p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-gray-500 truncate">
                           {user?.email || 'user@example.com'}
                         </p>
                       </div>
@@ -190,7 +192,7 @@ export default function DashboardLayout({
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 relative overflow-hidden flex flex-col pt-16 md:pt-0">
+      <main className="flex-1 relative overflow-hidden flex flex-col pt-[calc(4rem+env(safe-area-inset-top))] md:pt-0">
         {/* Page Header */}
         <PageHeader />
 
@@ -199,7 +201,7 @@ export default function DashboardLayout({
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto scroll-smooth safe-area-bottom bg-white md:rounded-t-2xl">
-           <div className="px-6 md:px-8 py-6 md:py-8 pb-24 md:pb-10 min-h-full">
+           <div className="px-4 md:px-8 py-4 md:py-8 pb-24 md:pb-10 min-h-full max-md:min-w-0">
              {children}
            </div>
         </div>

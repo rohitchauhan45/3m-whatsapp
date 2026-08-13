@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Crosshair, Loader2, MapPin, Plus } from 'lucide-react';
 import EntitySummaryCard from '@/components/ui/EntitySummaryCard';
 import { EntityCardGridSkeleton } from '@/components/ui/skeletons';
-import SiteMapPicker, { SITE_MAP_HEIGHT_PX } from '@/components/features/site/SiteMapPicker';
+import SiteMapPicker from '@/components/features/site/SiteMapPicker';
 import { useToast } from '@/lib/providers/toast-provider';
 import { usePageHeader } from '@/lib/utils/page-header-context';
 import { ui } from '@/lib/utils/ui-classes';
@@ -322,7 +322,7 @@ export default function SiteManagement() {
 
   if (view === 'create') {
     return (
-      <div className="animate-fade-in flex flex-col min-h-[calc(100dvh-12rem)]">
+      <div className="animate-fade-in flex flex-col min-h-[calc(100dvh-12rem)] max-md:pb-20">
         <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
           <label htmlFor="site-name" className="mb-2 block text-sm font-medium text-gray-700">
             Site name
@@ -349,7 +349,7 @@ export default function SiteManagement() {
           )}
         </div>
 
-        <div className="relative shrink-0" style={{ height: SITE_MAP_HEIGHT_PX }}>
+        <div className="relative shrink-0 h-[280px] md:h-[560px]">
           <SiteMapPicker
             position={position}
             onPositionChange={handlePositionChange}
@@ -365,12 +365,12 @@ export default function SiteManagement() {
           )}
         </div>
 
-        <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-30">
+        <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-30 max-md:inset-x-4 max-md:bottom-4 max-md:right-auto">
           <button
             type="button"
             onClick={handleCreate}
             disabled={createMutation.isPending || !siteName.trim() || !position || !address.trim()}
-            className={ui.btnPrimaryLg}
+            className={`${ui.btnPrimaryLg} max-md:w-full`}
           >
             {createMutation.isPending ? (
               <>
@@ -402,7 +402,7 @@ export default function SiteManagement() {
         <EntityCardGridSkeleton count={6} />
       ) : isEmpty ? (
         <div
-          className="flex min-h-[520px] w-full items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50/40 px-8 py-16"
+          className="flex min-h-[520px] w-full items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50/40 px-8 py-16 max-md:min-h-[240px] max-md:px-4 max-md:py-10"
         >
           <div className="text-center max-w-md">
             <MapPin className="mx-auto mb-4 text-gray-300" size={40} strokeWidth={1.5} />

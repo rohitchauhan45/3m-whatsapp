@@ -10,7 +10,7 @@ import {
   getProjectTaskStatusTextClassName,
 } from '@/lib/utils/status-styles';
 
-const topBoxTitleClass = 'text-xl font-semibold text-brand-primary leading-tight';
+const topBoxTitleClass = 'text-xl font-semibold text-brand-primary leading-tight break-words';
 
 type DetailItemProps = Readonly<{
   label: string;

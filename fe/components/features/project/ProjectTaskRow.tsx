@@ -39,12 +39,12 @@ function ProjectTaskRow({
       <button
         type="button"
         onClick={handleRowClick}
-        className={`flex w-full items-center gap-4 border border-gray-200 bg-white px-4 py-3 text-left transition-colors hover:bg-gray-50 ${
+        className={`flex w-full items-center gap-4 max-md:gap-2 border border-gray-200 bg-white px-4 max-md:px-3 py-3 text-left transition-colors hover:bg-gray-50 ${
           depth > 0 ? 'rounded-lg' : 'rounded-xl'
         } ${editMode ? 'cursor-pointer ring-2 ring-transparent hover:ring-brand-primary/25' : ''}`}
         aria-expanded={editMode ? undefined : expanded}
       >
-        <span className="w-16 shrink-0 text-sm font-semibold tabular-nums text-brand-primary">
+        <span className="w-16 max-md:w-12 shrink-0 text-sm font-semibold tabular-nums text-brand-primary">
           {task.code}
         </span>
         <span className="min-w-0 flex-1 text-[15px] font-medium text-gray-800 truncate">

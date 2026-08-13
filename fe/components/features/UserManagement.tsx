@@ -365,12 +365,12 @@ const UserManagement: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">User Management</h1>
           <p className="text-gray-600 mt-1">Manage user accounts and permissions</p>
         </div>
         <button
           onClick={handleAddUser}
-          className="inline-flex items-center px-4 py-2 bg-brand-primary text-white rounded-xl hover:opacity-90 transition-all shadow-lg shadow-brand-pink/20 font-medium"
+          className="inline-flex items-center justify-center px-4 py-2 bg-brand-primary text-white rounded-xl hover:opacity-90 transition-all shadow-lg shadow-brand-pink/20 font-medium max-md:w-full"
         >
           <Plus size={18} className="mr-2" />
           Add New User
@@ -423,7 +423,7 @@ const UserManagement: React.FC = () => {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="min-w-full max-md:min-w-[640px] divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -631,7 +631,7 @@ const UserManagement: React.FC = () => {
                     </p>
                   )}
                 </div>
-                <div className="mt-6 border-t border-gray-200 pt-4 flex justify-end space-x-3">
+                <div className="mt-6 border-t border-gray-200 pt-4 flex justify-end space-x-3 max-md:flex-col max-md:space-x-0 max-md:gap-2">
                   <button
                     type="button"
                     onClick={() => {
@@ -639,14 +639,14 @@ const UserManagement: React.FC = () => {
                       setError(null);
                       setValidationErrors({});
                     }}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-pink disabled:opacity-50"
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-pink disabled:opacity-50 max-md:w-full"
                     disabled={isSubmitting}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 text-sm font-medium text-white bg-brand-primary rounded-xl shadow-lg shadow-brand-pink/20 focus:outline-none focus:ring-2 focus:ring-brand-pink disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 text-sm font-medium text-white bg-brand-primary rounded-xl shadow-lg shadow-brand-pink/20 focus:outline-none focus:ring-2 focus:ring-brand-pink disabled:opacity-50 disabled:cursor-not-allowed max-md:w-full"
                     disabled={isSubmitting}
                   >
                     {isSubmitting ? (
@@ -673,20 +673,20 @@ const UserManagement: React.FC = () => {
         title="Confirm Delete"
         size="sm"
         footer={
-          <div className="flex justify-end space-x-3">
+          <div className="flex justify-end space-x-3 max-md:flex-col max-md:space-x-0 max-md:gap-2">
             <button
               onClick={() => {
                 setShowDeleteModal(false);
                 setError(null);
               }}
-              className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-pink disabled:opacity-50"
+              className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-pink disabled:opacity-50 max-md:w-full"
               disabled={isSubmitting}
             >
               Cancel
             </button>
             <button
               onClick={handleDeleteConfirm}
-              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:cursor-not-allowed disabled:opacity-50 max-md:w-full"
               disabled={isSubmitting}
             >
               {isSubmitting ? (

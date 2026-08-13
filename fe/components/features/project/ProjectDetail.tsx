@@ -87,16 +87,14 @@ export default function ProjectDetailView({ projectId }: ProjectDetailViewProps)
   }
 
   const handleToggleEdit = () => {
-    setEditMode((open) => {
-      if (open) setEditingTask(null);
-      return !open;
-    });
+    if (editMode) setEditingTask(null);
+    setEditMode((open) => !open);
   };
 
   return (
     <div className="animate-fade-in space-y-5">
       <div className="flex justify-end">
-        <button type="button" onClick={handleToggleEdit} className={ui.btnPrimary}>
+        <button type="button" onClick={handleToggleEdit} className={`${ui.btnPrimary} max-md:w-full`}>
           <Pencil size={16} />
           {editMode ? 'Done' : 'Edit'}
         </button>

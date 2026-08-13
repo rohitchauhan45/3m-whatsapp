@@ -123,7 +123,7 @@ export default function TaskImportPreviewTable({ rows, onChange }: TaskImportPre
             type="date"
             value={taskDateToInputValue(previewDate)}
             onChange={(e) => updatePreviewDate(e.target.value)}
-            className={`${editableFieldClass('sm:w-auto')} cursor-pointer`}
+            className={`${editableFieldClass('sm:w-auto max-md:w-full')} cursor-pointer`}
           />
           {previewDate && (
             <span className={`text-base font-medium ${ui.textAccent}`}>
@@ -143,7 +143,7 @@ export default function TaskImportPreviewTable({ rows, onChange }: TaskImportPre
       )}
 
       <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white min-h-[420px] shadow-sm">
-        <table className="w-full text-lg table-fixed">
+        <table className="w-full text-lg table-fixed max-md:min-w-[720px]">
           <colgroup>
             <col style={{ width: '16%' }} />
             <col style={{ width: '35%' }} />

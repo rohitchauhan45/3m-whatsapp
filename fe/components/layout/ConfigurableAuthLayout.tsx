@@ -107,17 +107,17 @@ export default function ConfigurableAuthLayout({
       </div>
 
       {/* Right Column - Form */}
-      <div className="w-full lg:w-1/3 bg-white flex items-center justify-center p-8 lg:p-12">
+      <div className="w-full lg:w-1/3 bg-white flex items-center justify-center p-5 md:p-8 lg:p-12">
         <div className="w-full max-w-md space-y-6">
           {/* Brand Name */}
           <div className="mb-6">
             <h1
-              className="text-3xl font-bold mb-2"
+              className="text-2xl md:text-3xl font-bold mb-2"
               style={{ color: brand.primaryColor }}
             >
               {brand.name}
             </h1>
-            <h2 className="text-2xl font-bold text-gray-900">
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900">
               {displayTitle}
             </h2>
           </div>

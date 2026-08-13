@@ -30,6 +30,7 @@ const createExpressApp = (): Express => {
     cors({
       origin: process.env.FRONTEND_URL,
       credentials: true,
+      exposedHeaders: ["Content-Disposition"],
     }),
   );
   

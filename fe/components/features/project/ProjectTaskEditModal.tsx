@@ -115,7 +115,7 @@ export default function ProjectTaskEditModal({
             type="button"
             onClick={() => onSave(formToPayload(form))}
             disabled={isSaving || !form.name.trim()}
-            className={ui.btnPrimary}
+            className={`${ui.btnPrimary} max-md:w-full`}
           >
             {isSaving ? (
               <>

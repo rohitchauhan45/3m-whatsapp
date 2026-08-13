@@ -82,7 +82,7 @@ function AssignedUsersTable({
   }
 
   return (
-    <table className="w-full text-base">
+    <table className="w-full text-base max-md:min-w-[640px]">
       <thead>
         <tr className="border-b border-gray-100 bg-gray-50/60 text-left text-sm uppercase tracking-wide text-gray-500">
           <th className="px-5 py-3.5 font-semibold">Name</th>
@@ -174,14 +174,14 @@ export default function SiteDetailView({ siteId }: SiteDetailViewProps) {
   return (
     <div className="animate-fade-in space-y-6">
       <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="border-b border-gray-100 bg-gradient-to-r from-slate-50 to-white px-6 py-5 sm:px-8">
+        <div className="border-b border-gray-100 bg-gradient-to-r from-slate-50 to-white px-6 py-5 sm:px-8 max-md:px-4">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-500 shadow-sm">
               <Building2 size={17} className="text-white" strokeWidth={1.75} />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-4">
-                <h1 className="text-2xl font-semibold tracking-tight text-brand-primary">
+                <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-brand-primary truncate">
                   {site.name}
                 </h1>
                 <p className="shrink-0 text-lg sm:text-xl">
@@ -206,9 +206,9 @@ export default function SiteDetailView({ siteId }: SiteDetailViewProps) {
       </section>
 
       <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-1 sm:px-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-1 sm:px-2 max-md:flex-col max-md:items-stretch">
           <h2 className="text-lg font-semibold text-gray-700">Assigned users</h2>
-          <button type="button" onClick={() => setAssignModalOpen(true)} className={ui.btnPrimary}>
+          <button type="button" onClick={() => setAssignModalOpen(true)} className={`${ui.btnPrimary} max-md:w-full`}>
             <Plus size={16} />
             Assign user
           </button>

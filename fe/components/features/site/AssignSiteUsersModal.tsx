@@ -99,7 +99,7 @@ export default function AssignSiteUsersModal({
       size="lg"
       closeButtonClassName="shrink-0 rounded-full border border-red-200 bg-white p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
       footer={
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 max-md:flex-col max-md:items-stretch">
           <p className="text-sm text-gray-500">
             {selectedIds.size > 0
               ? `${selectedIds.size} user${selectedIds.size === 1 ? '' : 's'} selected`
@@ -109,7 +109,7 @@ export default function AssignSiteUsersModal({
             type="button"
             onClick={handleAssign}
             disabled={isSubmitting || selectedIds.size === 0}
-            className={ui.btnPrimary}
+            className={`${ui.btnPrimary} max-md:w-full`}
           >
             {isSubmitting ? (
               <>

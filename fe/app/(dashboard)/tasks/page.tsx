@@ -275,12 +275,12 @@ function TasksPageContent() {
   };
 
   const previewActions = () => (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-wrap items-center justify-between gap-3 max-md:flex-col max-md:items-stretch">
       <button
         type="button"
         disabled={draftMutation.isPending || previewRows.length === 0}
         onClick={handleDraft}
-        className={ui.btnDraft}
+        className={`${ui.btnDraft} max-md:w-full`}
       >
         <FilePenLine size={16} />
         {draftMutation.isPending
@@ -292,11 +292,11 @@ function TasksPageContent() {
             : 'Draft'}
       </button>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-3 max-md:w-full max-md:flex-col">
         <button
           type="button"
           onClick={() => setAddUserOpen(true)}
-          className={ui.btnPrimary}
+          className={`${ui.btnPrimary} max-md:w-full`}
         >
           <UserPlus size={16} />
           Add User
@@ -305,7 +305,7 @@ function TasksPageContent() {
           type="button"
           disabled={createMutation.isPending || previewRows.length === 0}
           onClick={handleCreate}
-          className={ui.btnPrimaryLg}
+          className={`${ui.btnPrimaryLg} max-md:w-full`}
         >
           {createMutation.isPending ? 'Creating...' : 'Create'}
         </button>
@@ -323,7 +323,7 @@ function TasksPageContent() {
 
   if (view === 'done') {
     return (
-      <div className="animate-fade-in border border-green-200 bg-green-50 rounded-2xl p-12 text-center">
+      <div className="animate-fade-in border border-green-200 bg-green-50 rounded-2xl p-12 max-md:p-6 text-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-16 h-16 rounded-2xl bg-green-100 flex items-center justify-center">
             <FileCheck size={28} className="text-green-600" />
@@ -376,7 +376,7 @@ function TasksPageContent() {
     return (
       <div className="animate-fade-in">
         {previewMutation.isError ? (
-          <div className="border border-red-200 bg-red-50 rounded-2xl p-12 text-center">
+          <div className="border border-red-200 bg-red-50 rounded-2xl p-12 max-md:p-6 text-center">
             <XCircle size={28} className="text-red-600 mx-auto mb-3" />
             <p className="text-red-900">Could not read file. Please try again.</p>
             <button
@@ -394,7 +394,7 @@ function TasksPageContent() {
             }}
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
-            className={`border-2 border-dashed rounded-2xl p-12 text-center transition-all ${
+            className={`border-2 border-dashed rounded-2xl p-12 max-md:p-6 text-center transition-all ${
               dragOver ? 'border-gray-900 bg-gray-50' : 'border-gray-300 hover:border-gray-400'
             }`}
           >

@@ -74,7 +74,7 @@ function TaskDayCardSkeleton() {
 
 export function TaskDayCardsSkeleton({ count = 5 }: Readonly<{ count?: number }>) {
   return (
-    <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 lg:grid-cols-5">
       {Array.from({ length: count }, (_, index) => (
         <TaskDayCardSkeleton key={`day-card-skeleton-${index}`} />
       ))}

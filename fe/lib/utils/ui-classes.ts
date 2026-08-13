@@ -13,7 +13,7 @@ export const ui = {
     'inline-flex items-center justify-center gap-2 px-8 py-3 bg-brand-primary text-white rounded-xl text-sm font-medium hover:bg-brand-primaryDark transition-colors shadow-blue-sm',
   btnGhostBlue:
     'inline-flex items-center gap-1 rounded-lg border border-brand-primary/25 bg-brand-pastel-blue px-2 py-1.5 text-sm font-semibold text-brand-primary transition-colors hover:border-brand-primary/40 hover:bg-brand-pastel-blue/80',
-  tabBar: 'inline-flex items-center gap-1.5 rounded-full bg-gray-100 p-1.5 overflow-x-auto',
+  tabBar: 'inline-flex items-center gap-1.5 rounded-full bg-gray-100 p-1.5 overflow-x-auto max-md:w-full max-md:max-w-full',
   tabActive:
     'px-4 py-2 rounded-full text-[14px] font-semibold whitespace-nowrap transition-all bg-brand-primary text-white shadow-blue-sm',
   tabInactive:

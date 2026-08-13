@@ -174,7 +174,7 @@ export default function ProjectCreate() {
             <p className="text-sm text-gray-500">Showing first {sampleRows.length} rows</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm max-md:min-w-[480px]">
               <thead className="bg-gray-50 text-left text-gray-600">
                 <tr>
                   <th className="px-4 py-3 font-medium">Code</th>
@@ -197,7 +197,7 @@ export default function ProjectCreate() {
           </div>
         </div>
 
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-3 max-md:flex-col">
           <button
             type="button"
             onClick={() => {
@@ -206,7 +206,7 @@ export default function ProjectCreate() {
               setTaskCount(0);
               setView('upload');
             }}
-            className={ui.btnSecondary}
+            className={`${ui.btnSecondary} max-md:w-full`}
           >
             Choose another file
           </button>
@@ -214,7 +214,7 @@ export default function ProjectCreate() {
             type="button"
             onClick={handleCreate}
             disabled={createMutation.isPending || !projectName.trim()}
-            className={ui.btnPrimaryLg}
+            className={`${ui.btnPrimaryLg} max-md:w-full`}
           >
             {createMutation.isPending ? (
               <>
@@ -233,7 +233,7 @@ export default function ProjectCreate() {
   return (
     <div className="animate-fade-in">
       {previewMutation.isError ? (
-        <div className="border border-red-200 bg-red-50 rounded-2xl p-12 text-center">
+        <div className="border border-red-200 bg-red-50 rounded-2xl p-12 max-md:p-6 text-center">
           <XCircle size={28} className="text-red-600 mx-auto mb-3" />
           <p className="text-red-900">Could not read file. Please try again.</p>
           <button
@@ -252,7 +252,7 @@ export default function ProjectCreate() {
           }}
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
-          className={`border-2 border-dashed rounded-2xl p-12 text-center transition-all ${
+          className={`border-2 border-dashed rounded-2xl p-12 max-md:p-6 text-center transition-all ${
             dragOver ? 'border-gray-900 bg-gray-50' : 'border-gray-300 hover:border-gray-400'
           }`}
         >

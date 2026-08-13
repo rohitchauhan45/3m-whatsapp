@@ -88,12 +88,38 @@ h3 {
   font-size: clamp(20px, 2.4vw, 28px);
 }
 
+@media (max-width: 767px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  h1 {
+    font-size: 1.75rem;
+  }
+
+  h2 {
+    font-size: 1.25rem;
+  }
+
+  h3 {
+    font-size: 1.125rem;
+  }
+}
+
 .safe-area-top { 
   padding-top: env(safe-area-inset-top); 
 }
 
 .safe-area-bottom { 
   padding-bottom: env(safe-area-inset-bottom); 
+}
+
+@media (max-width: 767px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
 }
 
 ::-webkit-scrollbar { 

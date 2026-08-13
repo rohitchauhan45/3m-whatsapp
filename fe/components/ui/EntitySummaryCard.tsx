@@ -44,7 +44,7 @@ export default function EntitySummaryCard({
 }: Readonly<EntitySummaryCardProps>) {
   const content = (
     <>
-      <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-4">
+      <div className="flex items-start justify-between gap-3 px-5 max-md:px-4 pt-5 pb-4">
         <div className="flex min-w-0 items-start gap-3">
           <div
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconBgClassName}`}
@@ -82,7 +82,7 @@ export default function EntitySummaryCard({
       </div>
 
       {metaRows.length > 0 && (
-        <div className="space-y-4 border-t border-gray-100 px-7 py-4">
+        <div className="space-y-4 border-t border-gray-100 px-7 max-md:px-4 py-4">
           {metaRows.map((row, index) => {
             const RowIcon = row.icon;
             return (
@@ -100,7 +100,7 @@ export default function EntitySummaryCard({
       )}
 
       {footer && (
-        <div className="border-t border-gray-100 px-6 py-3">
+        <div className="border-t border-gray-100 px-6 max-md:px-4 py-3">
           <p className="text-[13px] text-gray-500">{footer}</p>
         </div>
       )}

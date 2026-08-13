@@ -36,7 +36,7 @@ export default function SettingsPage() {
           <p>
             <span className="font-medium text-gray-800">Name:</span> {user?.name || '—'}
           </p>
-          <p>
+          <p className="break-all">
             <span className="font-medium text-gray-800">Email:</span> {user?.email || '—'}
           </p>
         </div>
