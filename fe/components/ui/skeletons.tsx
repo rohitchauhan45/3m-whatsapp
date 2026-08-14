@@ -201,8 +201,30 @@ export function DataTableSkeleton({
 export function AdminTableSkeleton() {
   return (
     <div>
-      <TableFiltersSkeleton />
-      <DataTableSkeleton rows={8} columns={6} />
+      <div className="hidden md:block">
+        <TableFiltersSkeleton />
+        <DataTableSkeleton rows={8} columns={6} />
+      </div>
+      <div className="md:hidden space-y-3">
+        {Array.from({ length: 3 }, (_, index) => (
+          <div
+            key={`mobile-table-skel-${index}`}
+            className="rounded-xl border border-gray-200 bg-white overflow-hidden"
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-gray-100 bg-gray-50/80 px-3.5 py-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+              <Skeleton className="h-8 w-16 rounded-lg" />
+            </div>
+            <div className="space-y-2 px-3.5 py-3">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

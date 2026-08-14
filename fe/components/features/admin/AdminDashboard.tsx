@@ -383,9 +383,277 @@ const EMPTY_ROW_HEIGHT = 'h-[380px] max-md:h-48';
 function DataTableShell({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className={`overflow-x-auto touch-scroll border border-gray-200 rounded-xl bg-white ${TABLE_MIN_HEIGHT} max-md:min-h-0 max-md:-mx-3 max-md:rounded-none max-md:border-x-0`}
+      className={`hidden md:block overflow-x-auto touch-scroll border border-gray-200 rounded-xl bg-white ${TABLE_MIN_HEIGHT}`}
     >
       {children}
+    </div>
+  );
+}
+
+function MobileMetaRow({
+  label,
+  value,
+}: Readonly<{
+  label: string;
+  value: string;
+}>) {
+  const display = value.trim();
+  if (!display || display === '—') return null;
+
+  return (
+    <div className="flex items-start justify-between gap-3 text-sm">
+      <span className="shrink-0 text-gray-500">{label}</span>
+      <span className="min-w-0 text-right font-medium text-gray-800 break-words">{display}</span>
+    </div>
+  );
+}
+
+function TaskTableMobileList({
+  groups,
+  isAllFilter,
+  isPendingFilter,
+  isDelayedFilter,
+  isCancelledFilter,
+  showTaskStatusCol,
+  showTaskDateColInTable,
+  showExtraTimeCol,
+  showHowMuchCompleteCol,
+  showTaskReasonCol,
+  showCompletedAtCol,
+  truncateLength,
+  onAddTask,
+  onEditTask,
+  onViewTask,
+}: Readonly<{
+  groups: TaskTableUserGroup[];
+  isAllFilter: boolean;
+  isPendingFilter: boolean;
+  isDelayedFilter: boolean;
+  isCancelledFilter: boolean;
+  showTaskStatusCol: boolean;
+  showTaskDateColInTable: boolean;
+  showExtraTimeCol: boolean;
+  showHowMuchCompleteCol: boolean;
+  showTaskReasonCol: boolean;
+  showCompletedAtCol: boolean;
+  truncateLength: number;
+  onAddTask: (group: TaskTableUserGroup) => void;
+  onEditTask: (group: TaskTableUserGroup, task: TaskTableUserTask) => void;
+  onViewTask: (data: TaskDetailModalData) => void;
+}>) {
+  if (groups.length === 0) {
+    return (
+      <div className="md:hidden rounded-xl border border-gray-200 bg-white py-14 text-center text-sm text-gray-400">
+        No tasks for this period
+      </div>
+    );
+  }
+
+  return (
+    <div className="md:hidden space-y-3">
+      {groups.map((group) => (
+        <article
+          key={group.userId}
+          className="overflow-hidden rounded-xl border border-gray-200 bg-white"
+        >
+          <header className="flex items-start justify-between gap-3 border-b border-gray-100 bg-gray-50/80 px-3.5 py-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-gray-900 break-words">{group.name}</p>
+              <p className="mt-0.5 text-sm text-gray-500 break-all">{group.number}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onAddTask(group)}
+              className={`${ui.btnGhostBlue} shrink-0`}
+            >
+              <Plus size={14} strokeWidth={2.5} />
+              Task
+            </button>
+          </header>
+          <ul className="divide-y divide-gray-100">
+            {group.tasks.map((task) => {
+              const detailData = isAllFilter
+                ? buildAllTaskDetailModal(group, task)
+                : buildFilterTaskDetailModal(group, task);
+              const showEye = isAllFilter
+                ? true
+                : !isPendingFilter && shouldShowRowEye(detailData, truncateLength);
+              const canEdit = isTaskEditable(task.startAt);
+              const reasonText = isCancelledFilter
+                ? 'user decline, for more info see in user tab'
+                : task.remarkReason?.trim() || '';
+
+              return (
+                <li key={task.id} className="px-3.5 py-3 space-y-2">
+                  <p className="text-sm font-medium leading-snug text-gray-900 break-words">
+                    {task.name}
+                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm tabular-nums text-gray-600">
+                      {task.rawStartTime} – {task.rawEndTime}
+                    </p>
+                    {showTaskStatusCol && (
+                      <TaskStatusBadge
+                        status={isDelayedFilter ? task.status : getTaskDisplayStatus(task)}
+                      />
+                    )}
+                  </div>
+                  {showTaskDateColInTable && (
+                    <MobileMetaRow
+                      label="Date"
+                      value={task.date ? formatShortDisplayDate(task.date) : ''}
+                    />
+                  )}
+                  {showExtraTimeCol && (
+                    <MobileMetaRow label="Extra time" value={formatExtraTime(task.extratTme)} />
+                  )}
+                  {showHowMuchCompleteCol && (
+                    <MobileMetaRow label="Complete" value={task.howmuchComplete?.trim() || ''} />
+                  )}
+                  {showTaskReasonCol && <MobileMetaRow label="Reason" value={reasonText} />}
+                  {showCompletedAtCol && (
+                    <MobileMetaRow
+                      label="Completed"
+                      value={formatCompletedAtTime(task.completedAt)}
+                    />
+                  )}
+                  {(canEdit || showEye) && (
+                    <div className="flex justify-end gap-1 pt-0.5">
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => onEditTask(group, task)}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-brand-primary hover:bg-gray-50"
+                          aria-label="Edit task"
+                        >
+                          <Pencil size={18} />
+                        </button>
+                      )}
+                      {showEye && (
+                        <button
+                          type="button"
+                          onClick={() => onViewTask(detailData)}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-brand-primary hover:bg-gray-50"
+                          aria-label={
+                            isAllFilter ? 'View full task details' : 'View full details'
+                          }
+                        >
+                          <Eye size={18} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function UserTableMobileList({
+  rows,
+  isUserAllFilter,
+  isUserRemainingFilter,
+  showUserDateColInTable,
+  showUserStatusCol,
+  showUserOnTrackCol,
+  showUserReasonCol,
+  showUserSentCol,
+  onViewUser,
+  onGoToTasks,
+}: Readonly<{
+  rows: DashboardDailyTask[];
+  isUserAllFilter: boolean;
+  isUserRemainingFilter: boolean;
+  showUserDateColInTable: boolean;
+  showUserStatusCol: boolean;
+  showUserOnTrackCol: boolean;
+  showUserReasonCol: boolean;
+  showUserSentCol: boolean;
+  onViewUser: (row: DashboardDailyTask) => void;
+  onGoToTasks: (name: string, number: string) => void;
+}>) {
+  if (rows.length === 0) {
+    return (
+      <div className="md:hidden rounded-xl border border-gray-200 bg-white py-14 text-center text-sm text-gray-400">
+        No users for this period
+      </div>
+    );
+  }
+
+  return (
+    <div className="md:hidden space-y-3">
+      {rows.map((dt) => {
+        const isRemainingRow = !dt.status || dt.status === 'remaining';
+        const useRemainingSentColors =
+          isUserRemainingFilter || (isUserAllFilter && isRemainingRow);
+
+        return (
+          <article
+            key={dt.id}
+            className="rounded-xl border border-gray-200 bg-white px-3.5 py-3 space-y-2"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-gray-900 break-words">{dt.user?.name || '—'}</p>
+                <p className="mt-0.5 text-sm text-gray-500 break-all">{dt.user?.number || '—'}</p>
+              </div>
+              {showUserStatusCol && (
+                <UserStatusBadge
+                  status={dt.status}
+                  sent={useRemainingSentColors ? dt.sent : undefined}
+                />
+              )}
+            </div>
+            {showUserDateColInTable && (
+              <MobileMetaRow
+                label="Date"
+                value={dt.date ? formatShortDisplayDate(dt.date) : ''}
+              />
+            )}
+            {showUserOnTrackCol && (
+              <MobileMetaRow label="On track" value={dt.finaldecision || ''} />
+            )}
+            {showUserReasonCol && (
+              <MobileMetaRow label="Reason" value={dt.remarkReason?.trim() || ''} />
+            )}
+            {showUserSentCol && (
+              <div className="flex items-start justify-between gap-3 text-sm">
+                <span className="shrink-0 text-gray-500">Sent</span>
+                {dt.sent ? (
+                  <span className="font-semibold text-green-600">Yes</span>
+                ) : (
+                  <span className="font-semibold capitalize text-red-600">not send</span>
+                )}
+              </div>
+            )}
+            {isUserAllFilter && (
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    onGoToTasks(dt.user?.name || '', dt.user?.number || '')
+                  }
+                  className={ui.linkPrimary}
+                >
+                  Task
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onViewUser(dt)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-brand-primary hover:bg-gray-50"
+                  aria-label="View full user details"
+                >
+                  <Eye size={18} />
+                </button>
+              </div>
+            )}
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -925,7 +1193,7 @@ export default function AdminDashboard({
               ) : (
                 <>
                   <DataTableShell>
-                    <table className="w-full text-base table-fixed max-md:min-w-[880px]">
+                    <table className="w-full text-base table-fixed">
                       <colgroup>
                         <col style={{ width: isAllFilter ? '14%' : '16%' }} />
                         <col
@@ -1110,6 +1378,23 @@ export default function AdminDashboard({
                       </tbody>
                     </table>
                   </DataTableShell>
+                  <TaskTableMobileList
+                    groups={groupedUsers}
+                    isAllFilter={isAllFilter}
+                    isPendingFilter={isPendingFilter}
+                    isDelayedFilter={isDelayedFilter}
+                    isCancelledFilter={isCancelledFilter}
+                    showTaskStatusCol={showTaskStatusCol}
+                    showTaskDateColInTable={showTaskDateColInTable}
+                    showExtraTimeCol={showExtraTimeCol}
+                    showHowMuchCompleteCol={showHowMuchCompleteCol}
+                    showTaskReasonCol={showTaskReasonCol}
+                    showCompletedAtCol={showCompletedAtCol}
+                    truncateLength={truncateLength}
+                    onAddTask={openAddTaskModal}
+                    onEditTask={openTaskEditModal}
+                    onViewTask={setTaskDetailModal}
+                  />
                   <div className="flex items-center justify-between gap-4 pt-4 max-md:flex-col max-md:items-stretch">
                     <div className="min-w-0">
                       {taskTableQuery.data?.pagination && (
@@ -1194,7 +1479,7 @@ export default function AdminDashboard({
               ) : (
                 <>
                   <DataTableShell>
-                    <table className="w-full text-base table-fixed max-md:min-w-[880px]">
+                    <table className="w-full text-base table-fixed">
                       <colgroup>
                         {isUserAllFilter ? (
                           <>
@@ -1320,6 +1605,18 @@ export default function AdminDashboard({
                       </tbody>
                     </table>
                   </DataTableShell>
+                  <UserTableMobileList
+                    rows={userTableQuery.data?.dailyTasks ?? []}
+                    isUserAllFilter={isUserAllFilter}
+                    isUserRemainingFilter={isUserRemainingFilter}
+                    showUserDateColInTable={showUserDateColInTable}
+                    showUserStatusCol={showUserStatusCol}
+                    showUserOnTrackCol={showUserOnTrackCol}
+                    showUserReasonCol={showUserReasonCol}
+                    showUserSentCol={showUserSentCol}
+                    onViewUser={setUserDetailModal}
+                    onGoToTasks={goToUserTasks}
+                  />
                   {userTableQuery.data?.pagination && (
                     <PaginationBar
                       pagination={userTableQuery.data.pagination}
