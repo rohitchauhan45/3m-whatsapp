@@ -95,7 +95,7 @@ h3 {
   }
 
   h1 {
-    font-size: 1.75rem;
+    font-size: 1.5rem;
   }
 
   h2 {
@@ -115,11 +115,8 @@ h3 {
   padding-bottom: env(safe-area-inset-bottom); 
 }
 
-@media (max-width: 767px) {
-  html,
-  body {
-    overflow-x: hidden;
-  }
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
 }
 
 ::-webkit-scrollbar { 

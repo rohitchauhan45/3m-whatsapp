@@ -107,7 +107,7 @@ export default function ConfigurableAuthLayout({
       </div>
 
       {/* Right Column - Form */}
-      <div className="w-full lg:w-1/3 bg-white flex items-center justify-center p-5 md:p-8 lg:p-12">
+      <div className="w-full lg:w-1/3 bg-white flex items-center justify-center p-4 md:p-8 lg:p-12">
         <div className="w-full max-w-md space-y-6">
           {/* Brand Name */}
           <div className="mb-6">

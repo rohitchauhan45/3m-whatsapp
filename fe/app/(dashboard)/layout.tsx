@@ -62,21 +62,23 @@ export default function DashboardLayout({
     <div className="flex h-dvh overflow-hidden transition-colors duration-300 md:p-4 md:gap-4">
       {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 pt-[env(safe-area-inset-top)]">
-        <div className="h-16 flex items-center justify-between px-4">
-          <div className="flex items-center space-x-2.5">
-            <span className="font-bold text-lg tracking-tight text-gray-900">Admin</span>
-          </div>
+        <div className="h-14 flex items-center gap-3 px-3">
           <button
+            type="button"
             onClick={() => setIsMobileMenuOpen(true)}
-            className="p-2 text-gray-500 hover:text-gray-900 active:scale-95 transition-transform"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-gray-500 hover:text-gray-900 hover:bg-gray-50 active:scale-95 transition-transform"
+            aria-label="Open menu"
           >
-            <Menu size={24} />
+            <Menu size={22} />
           </button>
+          <span className="min-w-0 truncate font-bold text-base tracking-tight text-gray-900">Admin</span>
         </div>
       </div>
 
       {/* Sidebar Overlay (Mobile) */}
-      <div 
+      <button
+        type="button"
+        aria-label="Close menu"
         className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-50 transition-opacity duration-300 md:hidden ${
           isMobileMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
@@ -85,7 +87,7 @@ export default function DashboardLayout({
 
       {/* Sidebar Navigation */}
       <aside className={`
-        fixed inset-y-0 left-0 z-50 w-[300px] 
+        fixed inset-y-0 left-0 z-50 w-[min(280px,calc(100vw-2.5rem))]
         ${isCollapsed ? 'md:w-[86px]' : 'md:w-[280px]'} 
         bg-white 
         flex flex-col transition-all duration-300 ease-out 
@@ -98,20 +100,22 @@ export default function DashboardLayout({
         <div className="relative h-full">
           <div className="relative flex flex-col h-full">
             {/* Header */}
-            <div className={`p-5 border-b border-gray-100 ${isCollapsed ? 'md:px-3 md:py-4' : ''}`}>
+            <div className={`p-5 border-b border-gray-100 max-md:pt-[max(1.25rem,env(safe-area-inset-top))] ${isCollapsed ? 'md:px-3 md:py-4' : ''}`}>
               <div className="w-full flex items-center justify-between">
                 <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : 'space-x-2.5'}`}>
                   {!isCollapsed && <span className="text-lg font-bold text-gray-900 tracking-tight">Admin Dashboard</span>}
                 </div>
                 <div className="flex items-center space-x-2">
                   <button
+                    type="button"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="md:hidden inline-flex items-center justify-center h-8 w-8 rounded-full hover:bg-gray-100 text-gray-500"
+                    className="md:hidden inline-flex items-center justify-center h-10 w-10 rounded-full hover:bg-gray-100 text-gray-500"
                     aria-label="Close sidebar"
                   >
                     <X size={18} />
                   </button>
                   <button
+                    type="button"
                     onClick={() => setIsCollapsed(!isCollapsed)}
                     className="hidden md:inline-flex items-center justify-center h-9 w-9 rounded-full border border-gray-200 bg-white shadow-soft hover:bg-gray-50 text-gray-500"
                     aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -155,7 +159,8 @@ export default function DashboardLayout({
                 {!isCollapsed && <span className="text-[14px]">Settings</span>}
               </Link>
               
-              <button 
+              <button
+                type="button"
                 onClick={handleLogout}
                 className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'} px-4 py-3 text-red-500 hover:bg-red-50 hover:text-red-600 rounded-xl transition-colors ${isCollapsed ? 'md:px-2 md:py-2.5' : ''}`}
               >
@@ -165,7 +170,7 @@ export default function DashboardLayout({
 
               {/* User Profile */}
               <div className="mt-4 pt-4 border-t border-gray-100">
-                <button className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} p-3 hover:bg-gray-50 rounded-xl transition-colors group`}>
+                <button type="button" className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} p-3 hover:bg-gray-50 rounded-xl transition-colors group`}>
                   <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'}`}>
                     <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-brand-primary/20 to-brand-accent-blue/20 border-2 border-white flex items-center justify-center">
                       <span className="text-xs font-bold text-brand-primary">
@@ -192,16 +197,16 @@ export default function DashboardLayout({
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 relative overflow-hidden flex flex-col pt-[calc(4rem+env(safe-area-inset-top))] md:pt-0">
+      <main className="flex-1 relative overflow-hidden flex flex-col min-w-0 pt-[calc(3.5rem+env(safe-area-inset-top))] md:pt-0">
         {/* Page Header */}
         <PageHeader />
 
         {/* Dotted gap between header and content */}
-        <div className="h-4 bg-[#f7f7f7] flex-shrink-0" style={{ backgroundImage: 'radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px)', backgroundSize: '16px 16px' }} />
+        <div className="h-4 max-md:h-3 bg-[#f7f7f7] flex-shrink-0" style={{ backgroundImage: 'radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px)', backgroundSize: '16px 16px' }} />
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto scroll-smooth safe-area-bottom bg-white md:rounded-t-2xl">
-           <div className="px-4 md:px-8 py-4 md:py-8 pb-24 md:pb-10 min-h-full max-md:min-w-0">
+           <div className="px-3 md:px-8 py-4 md:py-8 pb-20 md:pb-10 min-h-full max-md:min-w-0">
              {children}
            </div>
         </div>

@@ -173,7 +173,7 @@ export default function ProjectCreate() {
             <h3 className="text-base font-semibold text-gray-900">Preview sample</h3>
             <p className="text-sm text-gray-500">Showing first {sampleRows.length} rows</p>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto touch-scroll">
             <table className="w-full text-sm max-md:min-w-[480px]">
               <thead className="bg-gray-50 text-left text-gray-600">
                 <tr>

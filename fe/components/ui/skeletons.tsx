@@ -74,7 +74,7 @@ function TaskDayCardSkeleton() {
 
 export function TaskDayCardsSkeleton({ count = 5 }: Readonly<{ count?: number }>) {
   return (
-    <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid gap-4 max-md:gap-2.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
       {Array.from({ length: count }, (_, index) => (
         <TaskDayCardSkeleton key={`day-card-skeleton-${index}`} />
       ))}
@@ -89,7 +89,7 @@ export function OverviewPanelSkeleton() {
         <Skeleton className="h-7 w-56 max-w-full" />
         <Skeleton className="h-4 w-full max-w-md" />
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {Array.from({ length: 4 }, (_, index) => (
           <div key={`overview-field-${index}`} className="space-y-2">
             <Skeleton className="h-3 w-20" />
@@ -103,7 +103,7 @@ export function OverviewPanelSkeleton() {
 
 export function MetricsGridSkeleton({ fields = 10 }: Readonly<{ fields?: number }>) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {Array.from({ length: fields }, (_, index) => (
         <div key={`metric-field-${index}`} className="space-y-2">
           <Skeleton className="h-3 w-16" />
@@ -163,7 +163,7 @@ export function TableFiltersSkeleton() {
           <Skeleton key={`filter-tab-${index}`} className="h-9 w-20 rounded-full" />
         ))}
       </div>
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 max-md:w-full">
         <Skeleton className="h-10 w-full sm:w-64 rounded-full" />
         <Skeleton className="h-10 w-32 rounded-full" />
       </div>
@@ -176,7 +176,7 @@ export function DataTableSkeleton({
   columns = 6,
 }: Readonly<{ rows?: number; columns?: number }>) {
   return (
-    <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white min-h-[420px]">
+    <div className="overflow-x-auto touch-scroll border border-gray-200 rounded-xl bg-white min-h-[420px] max-md:min-h-0">
       <div className="border-b border-gray-100 bg-gray-50 px-4 py-3 flex gap-4">
         {Array.from({ length: columns }, (_, index) => (
           <Skeleton key={`table-head-${index}`} className="h-4 flex-1" />

@@ -15,9 +15,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   return (
     <div className="relative animate-fade-in">
       {/* Header Section */}
-      <div className="relative z-10 mb-12">
-        <h1 className="text-2xl md:text-5xl font-bold text-gray-900 mb-3 break-words">{heading}</h1>
-        <p className="text-gray-600 text-base md:text-lg">{subheading}</p>
+      <div className="relative z-10 mb-12 max-md:mb-6">
+        <h1 className="text-[22px] md:text-5xl font-bold text-gray-900 mb-3 break-words">{heading}</h1>
+        <p className="text-gray-600 text-[15px] md:text-lg">{subheading}</p>
       </div>
     </div>
   );

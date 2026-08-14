@@ -39,7 +39,7 @@ function ProjectTaskRow({
       <button
         type="button"
         onClick={handleRowClick}
-        className={`flex w-full items-center gap-4 max-md:gap-2 border border-gray-200 bg-white px-4 max-md:px-3 py-3 text-left transition-colors hover:bg-gray-50 ${
+        className={`flex w-full items-center gap-4 max-md:gap-2 max-md:flex-wrap border border-gray-200 bg-white px-4 max-md:px-3 py-3 text-left transition-colors hover:bg-gray-50 ${
           depth > 0 ? 'rounded-lg' : 'rounded-xl'
         } ${editMode ? 'cursor-pointer ring-2 ring-transparent hover:ring-brand-primary/25' : ''}`}
         aria-expanded={editMode ? undefined : expanded}
@@ -47,13 +47,13 @@ function ProjectTaskRow({
         <span className="w-16 max-md:w-12 shrink-0 text-sm font-semibold tabular-nums text-brand-primary">
           {task.code}
         </span>
-        <span className="min-w-0 flex-1 text-[15px] font-medium text-gray-800 truncate">
+        <span className="min-w-0 flex-1 text-[15px] font-medium text-gray-800 truncate max-md:basis-[calc(100%-3.5rem)]">
           {task.name}
         </span>
         <span className="shrink-0 text-sm font-semibold text-gray-600 tabular-nums">
           {formatProjectCompletion(task.completionPct)}
         </span>
-        <ProjectStatusLabel status={task.status} className="text-xs font-semibold shrink-0" />
+        <ProjectStatusLabel status={task.status} className="text-xs font-semibold shrink-0 max-md:max-w-[40%] max-md:truncate" />
         <ChevronDown
           size={18}
           className={`shrink-0 text-gray-400 transition-transform ${

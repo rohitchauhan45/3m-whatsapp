@@ -56,7 +56,7 @@ export default function Modal({
   if (!open || typeof document === 'undefined') return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6 max-md:p-2">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6 max-md:p-3">
       <button
         type="button"
         aria-label="Close modal"
@@ -67,13 +67,13 @@ export default function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className={`relative flex flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-2xl w-full ${sizeClasses[size]} max-h-[min(90dvh,calc(100vh-2rem))] max-md:max-h-[min(94dvh,calc(100vh-1.5rem))] animate-fade-in`}
+        className={`relative flex flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-2xl w-full ${sizeClasses[size]} max-h-[min(90dvh,calc(100vh-2rem))] max-md:max-w-[calc(100vw-24px)] max-md:max-h-[min(92dvh,calc(100vh-24px))] max-md:rounded-2xl animate-fade-in`}
       >
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-gray-100 bg-gray-50/50 px-5 py-4 sm:px-6 max-md:px-4">
           <div className="min-w-0 flex-1">
             <h3
               id="modal-title"
-              className="text-lg font-semibold leading-snug text-gray-900 sm:text-xl"
+              className="text-base font-semibold leading-snug text-gray-900 sm:text-xl break-words"
             >
               {title}
             </h3>

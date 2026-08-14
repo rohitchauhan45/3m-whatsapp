@@ -392,7 +392,7 @@ export default function SiteManagement() {
   return (
     <div className="animate-fade-in">
       <div className="flex items-center justify-end mb-5">
-        <button type="button" onClick={openCreate} className={ui.btnPrimary}>
+        <button type="button" onClick={openCreate} className={`${ui.btnPrimary} max-md:w-full`}>
           <Plus size={16} />
           Add Site
         </button>

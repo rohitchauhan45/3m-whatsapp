@@ -39,7 +39,7 @@ export default function ProjectManagement() {
   return (
     <div className="animate-fade-in">
       <div className="flex items-center justify-end mb-5">
-        <Link href="/projects/new" className={ui.btnPrimary}>
+        <Link href="/projects/new" className={`${ui.btnPrimary} max-md:w-full`}>
           <Plus size={16} />
           Add Project
         </Link>

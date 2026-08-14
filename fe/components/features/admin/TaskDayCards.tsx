@@ -29,11 +29,11 @@ function DraftCard({
     <button
       type="button"
       onClick={onSelect}
-      className="bg-white border border-gray-200 rounded-xl p-3 min-h-[140px] text-left hover:shadow-md hover:border-brand-primary/30 transition-all flex flex-col justify-between"
+      className="bg-white border border-gray-200 rounded-xl p-3 min-h-[140px] max-md:min-h-[120px] text-left hover:shadow-md hover:border-brand-primary/30 transition-all flex flex-col justify-between"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-baseline gap-1">
-          <span className="text-3xl font-bold text-brand-primary">{card.taskCount}</span>
+          <span className="text-3xl max-md:text-2xl font-bold text-brand-primary">{card.taskCount}</span>
           <span className="text-xs text-gray-500">tasks</span>
         </div>
         <div className="text-right shrink-0">
@@ -44,12 +44,12 @@ function DraftCard({
         </div>
       </div>
 
-      <div className="flex items-end justify-between gap-2 mt-4">
-        <span className="flex items-center gap-1.5 text-[14px] text-gray-500">
+      <div className="flex items-end justify-between gap-2 mt-4 max-md:mt-3 max-md:flex-col max-md:items-start">
+        <span className="flex items-center gap-1.5 text-[14px] max-md:text-[12px] text-gray-500">
           <Users size={15} className="text-brand-primary/70" /> {card.userCount}{' '}
           {card.userCount === 1 ? 'user' : 'users'}
         </span>
-        <p className="text-[13px] text-gray-500 shrink-0">
+        <p className="text-[13px] max-md:text-[11px] text-gray-500 shrink-0">
           created : <span className="text-gray-700">{card.createdAtLabel}</span>
         </p>
       </div>
@@ -68,27 +68,27 @@ function TaskDayCard({
     <button
       type="button"
       onClick={onSelect}
-      className="bg-white border border-gray-200 rounded-xl p-3 min-h-[140px] text-left hover:shadow-md hover:border-brand-primary/30 transition-all flex flex-col justify-between"
+      className="bg-white border border-gray-200 rounded-xl p-3 min-h-[140px] max-md:min-h-[120px] text-left hover:shadow-md hover:border-brand-primary/30 transition-all flex flex-col justify-between"
     >
       <div className="flex items-start justify-between">
         <div className="flex items-baseline gap-1">
-          <span className="text-3xl font-bold text-brand-primary">{day.taskCount}</span>
+          <span className="text-3xl max-md:text-2xl font-bold text-brand-primary">{day.taskCount}</span>
           <span className="text-xs text-gray-500">tasks</span>
         </div>
         <div className="text-right">
           {RELATIVE_DAY_LABELS.has(day.label) ? (
             <>
-              <p className="text-lg font-semibold text-gray-800">{day.label}</p>
+              <p className="text-lg max-md:text-sm font-semibold text-gray-800">{day.label}</p>
               <p className="text-xs text-brand-primary font-medium">
                 {formatTaskTabDate(day.date)}
               </p>
             </>
           ) : (
-            <p className="text-lg font-semibold text-gray-800">{formatTaskTabDate(day.date)}</p>
+            <p className="text-lg max-md:text-sm font-semibold text-gray-800">{formatTaskTabDate(day.date)}</p>
           )}
         </div>
       </div>
-      <div className="flex items-center gap-4 mt-4 text-[14px] text-gray-500">
+      <div className="flex items-center gap-4 mt-4 max-md:mt-3 max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-1 text-[14px] max-md:text-[12px] text-gray-500">
         <span className="flex items-center gap-1.5">
           <Users size={15} className="text-brand-primary/60" /> {day.userCount}{' '}
           {day.userCount === 1 ? 'user' : 'users'}
@@ -115,8 +115,8 @@ export default function TaskDayCards({
 
   return (
     <div className="animate-fade-in">
-      <div className="flex items-center justify-between gap-3 mb-8 max-md:mb-5">
-        <h1 className="min-w-0 truncate text-2xl font-bold text-gray-900">Tasks</h1>
+      <div className="flex items-center justify-between gap-3 mb-8 max-md:mb-4">
+        <h1 className="min-w-0 truncate text-[22px] md:text-2xl font-bold text-gray-900">Tasks</h1>
         <button type="button" onClick={onAddTask} className={`${ui.btnPrimary} max-md:shrink-0`}>
           <Plus size={16} />
           Add Task
@@ -126,7 +126,7 @@ export default function TaskDayCards({
       {isLoading && <TaskDayCardsSkeleton count={5} />}
 
       {!isLoading && isEmpty && (
-        <div className="text-center py-20">
+        <div className="text-center py-12 md:py-20">
           <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
             <Calendar size={28} className="text-gray-400" />
           </div>
@@ -136,7 +136,7 @@ export default function TaskDayCards({
       )}
 
       {!isLoading && !isEmpty && (
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid gap-4 max-md:gap-2.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
           {draftCards.map((card) => (
             <DraftCard key={card.key} card={card} onSelect={() => onSelectDraft(card)} />
           ))}

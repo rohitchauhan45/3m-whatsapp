@@ -142,7 +142,7 @@ export default function TaskImportPreviewTable({ rows, onChange }: TaskImportPre
         </div>
       )}
 
-      <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white min-h-[420px] shadow-sm">
+      <div className="overflow-x-auto touch-scroll border border-gray-200 rounded-xl bg-white min-h-[420px] max-md:min-h-0 shadow-sm">
         <table className="w-full text-lg table-fixed max-md:min-w-[720px]">
           <colgroup>
             <col style={{ width: '16%' }} />

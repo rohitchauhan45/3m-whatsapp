@@ -14,6 +14,12 @@ interface PaginationState {
   totalPages: number;
 }
 
+function roleBadgeClass(role: string): string {
+  if (role === 'admin') return 'bg-purple-100 text-purple-800';
+  if (role === 'manager') return 'bg-blue-100 text-blue-800';
+  return 'bg-gray-100 text-gray-800';
+}
+
 const UserManagement: React.FC = () => {
   const { user: currentUser, token } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
@@ -231,22 +237,27 @@ const UserManagement: React.FC = () => {
     };
     return (
       <div className="flex items-center justify-between px-4 py-3 sm:px-6 mt-4 border-t border-gray-200">
-        <div className="flex flex-1 justify-between sm:hidden">
+        <div className="flex flex-1 items-center justify-between md:hidden">
           <button
+            type="button"
             onClick={() => handlePageChange(page - 1)}
             disabled={page === 1}
-            className={`relative inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium ${
+            className={`relative inline-flex min-h-10 items-center rounded-md border px-4 py-2 text-sm font-medium ${
               page === 1
                 ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
                 : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
-            Previous
+            Prev
           </button>
+          <span className="text-sm font-medium text-gray-600 tabular-nums">
+            {page} / {totalPages}
+          </span>
           <button
+            type="button"
             onClick={() => handlePageChange(page + 1)}
             disabled={page === totalPages}
-            className={`relative inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium ${
+            className={`relative inline-flex min-h-10 items-center rounded-md border px-4 py-2 text-sm font-medium ${
               page === totalPages
                 ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
                 : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
@@ -255,7 +266,7 @@ const UserManagement: React.FC = () => {
             Next
           </button>
         </div>
-        <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+        <div className="hidden md:flex md:flex-1 md:items-center md:justify-between">
           <div>
             <p className="text-sm text-gray-700">
               Showing{' '}
@@ -273,6 +284,7 @@ const UserManagement: React.FC = () => {
             <div className="flex items-center space-x-2">
               <span className="text-sm text-gray-700">Rows per page:</span>
               <select
+                aria-label="Rows per page"
                 className="rounded border-gray-300 bg-white text-sm text-gray-700 px-2 py-1"
                 value={pagination.limit}
                 onChange={handleLimitChange}
@@ -365,8 +377,8 @@ const UserManagement: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">User Management</h1>
-          <p className="text-gray-600 mt-1">Manage user accounts and permissions</p>
+          <h1 className="text-[22px] md:text-3xl font-bold text-gray-900">User Management</h1>
+          <p className="text-gray-600 mt-1 text-sm md:text-base">Manage user accounts and permissions</p>
         </div>
         <button
           onClick={handleAddUser}
@@ -400,7 +412,7 @@ const UserManagement: React.FC = () => {
         </div>
       )}
 
-      <div className="glass-card p-4 rounded-2xl">
+      <div className="glass-card p-4 max-md:p-3 rounded-2xl">
         <div className="relative mb-4">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search className="h-5 w-5 text-gray-400" />
@@ -410,7 +422,8 @@ const UserManagement: React.FC = () => {
             placeholder="Search users..."
             value={searchTerm}
             onChange={handleSearchChange}
-            className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-xl leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-pink focus:border-brand-pink text-gray-900"
+            aria-label="Search users"
+            className="block w-full min-h-11 pl-10 pr-3 py-2 border border-gray-200 rounded-xl leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-pink focus:border-brand-pink text-gray-900"
           />
         </div>
 
@@ -422,8 +435,8 @@ const UserManagement: React.FC = () => {
           <DataTableSkeleton rows={8} columns={5} />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full max-md:min-w-[640px] divide-y divide-gray-200">
+            <div className="hidden md:block overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -460,13 +473,7 @@ const UserManagement: React.FC = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.name || '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              (user.role_name || user.role) === 'admin'
-                                ? 'bg-purple-100 text-purple-800'
-                                : (user.role_name || user.role) === 'manager'
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-gray-100 text-gray-800'
-                            }`}
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${roleBadgeClass(user.role_name || user.role)}`}
                           >
                             {user.role_name || user.role}
                           </span>
@@ -474,15 +481,19 @@ const UserManagement: React.FC = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center space-x-3">
                             <button
+                              type="button"
                               onClick={() => handleEditUser(user)}
                               className="text-brand-pink hover:text-brand-orange transition-colors"
+                              aria-label={`Edit ${user.username}`}
                             >
                               <Edit size={18} />
                             </button>
                             {user.id !== currentUser?.id && (
                               <button
+                                type="button"
                                 onClick={() => handleDeleteClick(user)}
                                 className="text-red-600 hover:text-red-700 transition-colors"
+                                aria-label={`Delete ${user.username}`}
                               >
                                 <Trash2 size={18} />
                               </button>
@@ -494,6 +505,55 @@ const UserManagement: React.FC = () => {
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="md:hidden space-y-3">
+              {users.length === 0 ? (
+                <p className="py-10 text-center text-sm text-gray-500">
+                  {debouncedSearchTerm ? 'No users found matching your search.' : 'No users found.'}
+                </p>
+              ) : (
+                users.map((user) => {
+                  const role = user.role_name || user.role;
+                  return (
+                    <div key={user.id} className="rounded-xl border border-gray-200 bg-white p-3.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-gray-900">
+                            {user.name || user.username}
+                          </p>
+                          <p className="truncate text-sm text-gray-500">{user.username}</p>
+                        </div>
+                        <span
+                          className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${roleBadgeClass(role)}`}
+                        >
+                          {role}
+                        </span>
+                      </div>
+                      <p className="mt-2 break-all text-sm text-gray-600">{user.email}</p>
+                      <div className="mt-3 flex justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleEditUser(user)}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-brand-pink hover:bg-gray-50"
+                          aria-label={`Edit ${user.username}`}
+                        >
+                          <Edit size={18} />
+                        </button>
+                        {user.id !== currentUser?.id && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteClick(user)}
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-red-600 hover:bg-red-50"
+                            aria-label={`Delete ${user.username}`}
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
             {renderPagination()}
           </>

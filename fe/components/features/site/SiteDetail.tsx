@@ -71,7 +71,7 @@ function AssignedUsersTable({
 }>) {
   if (users.length === 0) {
     return (
-      <div className="flex min-h-[280px] flex-col items-center justify-center px-6 text-center">
+      <div className="flex min-h-[280px] max-md:min-h-[180px] flex-col items-center justify-center px-6 text-center">
         <Users className="mb-3 text-gray-300" size={36} strokeWidth={1.5} />
         <p className="text-base font-semibold text-gray-600">No users assigned yet</p>
         <p className="mt-1 max-w-sm text-sm text-gray-500">
@@ -82,24 +82,37 @@ function AssignedUsersTable({
   }
 
   return (
-    <table className="w-full text-base max-md:min-w-[640px]">
-      <thead>
-        <tr className="border-b border-gray-100 bg-gray-50/60 text-left text-sm uppercase tracking-wide text-gray-500">
-          <th className="px-5 py-3.5 font-semibold">Name</th>
-          <th className="px-5 py-3.5 font-semibold">Number</th>
-          <th className="px-5 py-3.5 font-semibold">Assigned on</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-gray-100">
-        {users.map((user) => (
-          <tr key={user.id} className="transition-colors hover:bg-gray-50/70">
-            <td className="px-5 py-4 font-semibold text-gray-700">{user.name}</td>
-            <td className="px-5 py-4 tabular-nums text-gray-600">{user.number}</td>
-            <td className="px-5 py-4 text-gray-600">{formatDisplayDate(user.assignedAt)}</td>
+    <>
+      <table className="hidden md:table w-full text-base">
+        <thead>
+          <tr className="border-b border-gray-100 bg-gray-50/60 text-left text-sm uppercase tracking-wide text-gray-500">
+            <th className="px-5 py-3.5 font-semibold">Name</th>
+            <th className="px-5 py-3.5 font-semibold">Number</th>
+            <th className="px-5 py-3.5 font-semibold">Assigned on</th>
           </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {users.map((user) => (
+            <tr key={user.id} className="transition-colors hover:bg-gray-50/70">
+              <td className="px-5 py-4 font-semibold text-gray-700">{user.name}</td>
+              <td className="px-5 py-4 tabular-nums text-gray-600">{user.number}</td>
+              <td className="px-5 py-4 text-gray-600">{formatDisplayDate(user.assignedAt)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="md:hidden divide-y divide-gray-100">
+        {users.map((user) => (
+          <div key={user.id} className="px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <p className="min-w-0 truncate font-semibold text-gray-800">{user.name}</p>
+              <p className="shrink-0 text-sm tabular-nums text-gray-600">{user.number}</p>
+            </div>
+            <p className="mt-1 text-sm text-gray-500">Assigned {formatDisplayDate(user.assignedAt)}</p>
+          </div>
         ))}
-      </tbody>
-    </table>
+      </div>
+    </>
   );
 }
 
@@ -184,7 +197,7 @@ export default function SiteDetailView({ siteId }: SiteDetailViewProps) {
                 <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-brand-primary truncate">
                   {site.name}
                 </h1>
-                <p className="shrink-0 text-lg sm:text-xl">
+                <p className="shrink-0 text-lg sm:text-xl max-md:text-sm">
                   <span className="font-medium text-gray-400">user : </span>
                   <span className="font-semibold text-gray-600">{site.users.length}</span>
                 </p>
@@ -193,7 +206,7 @@ export default function SiteDetailView({ siteId }: SiteDetailViewProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 sm:p-6 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 p-5 max-md:p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3">
           <DetailItem icon={MapPin} label="Address" value={site.address} />
           <DetailItem
             icon={Crosshair}
@@ -215,9 +228,7 @@ export default function SiteDetailView({ siteId }: SiteDetailViewProps) {
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <AssignedUsersTable users={site.users} />
-          </div>
+          <AssignedUsersTable users={site.users} />
         </div>
       </section>
 

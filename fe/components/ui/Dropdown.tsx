@@ -59,7 +59,7 @@ export default function Dropdown({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center justify-between gap-2 min-w-[150px] max-md:w-full px-4 py-2.5 text-sm font-medium text-gray-800 bg-gray-50 border border-gray-200 rounded-full hover:bg-gray-100 transition-colors duration-200"
+        className="flex items-center justify-between gap-2 min-w-[150px] max-md:min-w-0 max-md:w-full px-4 py-2.5 text-sm font-medium text-gray-800 bg-gray-50 border border-gray-200 rounded-full hover:bg-gray-100 transition-colors duration-200 max-md:min-h-11"
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -75,7 +75,7 @@ export default function Dropdown({
       {open && (
         <div
           role="listbox"
-          className={`absolute z-50 mt-2 w-full min-w-[180px] bg-white border border-gray-100 rounded-2xl shadow-lg py-1.5 animate-fade-in ${
+          className={`absolute z-50 mt-2 w-full min-w-[180px] max-md:min-w-0 max-md:left-0 max-md:right-0 bg-white border border-gray-100 rounded-2xl shadow-lg py-1.5 animate-fade-in ${
             align === 'right' ? 'right-0' : 'left-0'
           }`}
         >

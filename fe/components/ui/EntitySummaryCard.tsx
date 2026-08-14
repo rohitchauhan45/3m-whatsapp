@@ -58,7 +58,7 @@ export default function EntitySummaryCard({
             ) : null}
           </div>
           <div className="min-w-0">
-            <h3 className="text-[20px] font-semibold text-slate-700 leading-tight truncate">
+            <h3 className="text-[20px] max-md:text-[17px] font-semibold text-slate-700 leading-tight truncate">
               {title}
             </h3>
             {subtitle && <p className="text-sm text-gray-500">{subtitle}</p>}
@@ -92,7 +92,7 @@ export default function EntitySummaryCard({
                   className={`mt-0.5 shrink-0 ${row.iconClassName ?? 'text-blue-500'}`}
                   strokeWidth={2}
                 />
-                <div className="min-w-0 text-[15px] leading-relaxed text-gray-700">{row.content}</div>
+                <div className="min-w-0 text-[15px] max-md:text-sm leading-relaxed text-gray-700 break-words">{row.content}</div>
               </div>
             );
           })}

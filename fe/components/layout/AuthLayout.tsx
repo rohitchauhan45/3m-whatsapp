@@ -19,7 +19,7 @@ export default function AuthLayout({
   const isSignup = pathname === '/signup';
 
   return (
-    <div className="min-h-dvh flex items-center justify-center auth-bg-pattern px-6 py-12">
+    <div className="min-h-dvh flex items-center justify-center auth-bg-pattern px-4 md:px-6 py-10 md:py-12">
       <div className="w-full max-w-md space-y-8 relative z-10">
         {/* Logo at top */}
         <div className="flex justify-center mb-8">
@@ -55,9 +55,9 @@ export default function AuthLayout({
         )}
 
         {/* Main Card */}
-        <div className="glass-card-soft rounded-3xl px-8 py-10 shadow-purple-lg">
+        <div className="glass-card-soft rounded-3xl px-8 py-10 max-md:px-5 max-md:py-8 shadow-purple-lg">
           <div className="space-y-2 mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
+            <h1 className="text-3xl max-md:text-[22px] font-bold text-gray-900">{title}</h1>
             {subtitle && (
               <p className="text-base text-gray-500 leading-relaxed">
                 {subtitle}

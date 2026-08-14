@@ -10,7 +10,7 @@ import {
   getProjectTaskStatusTextClassName,
 } from '@/lib/utils/status-styles';
 
-const topBoxTitleClass = 'text-xl font-semibold text-brand-primary leading-tight break-words';
+const topBoxTitleClass = 'text-xl max-md:text-lg font-semibold text-brand-primary leading-tight break-words';
 
 type DetailItemProps = Readonly<{
   label: string;
@@ -66,7 +66,7 @@ export function ProjectOverviewPanel({
   updatedAt,
 }: ProjectOverviewPanelProps) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
+    <div className="rounded-xl border border-gray-200 bg-white p-5 max-md:p-4 shadow-sm space-y-4">
       <div>
         <h2 className={topBoxTitleClass}>{name}</h2>
         {description?.trim() && (
@@ -74,7 +74,7 @@ export function ProjectOverviewPanel({
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <DetailItem label="Total task" value={String(taskCount)} />
         <DetailItem label="Subtask" value={String(subtaskCount)} />
         <DetailItem
@@ -88,7 +88,7 @@ export function ProjectOverviewPanel({
       </div>
 
       {(createdAt || updatedAt) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-gray-100 pt-4">
+        <div className="grid grid-cols-2 gap-4 border-t border-gray-100 pt-4">
           {createdAt && <DetailItem label="Created" value={formatProjectDate(createdAt)} />}
           {updatedAt && <DetailItem label="Updated" value={formatProjectDate(updatedAt)} />}
         </div>
@@ -105,7 +105,7 @@ type ProjectTaskMetricsProps = Readonly<{
 export function ProjectTaskMetrics({ task, className = '' }: ProjectTaskMetricsProps) {
   return (
     <div
-      className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 ${className}`}
+      className={`grid grid-cols-2 lg:grid-cols-4 gap-4 ${className}`}
     >
       <DetailItem label="Type" value={task.type} />
       <DetailItem label="Status" value={<ProjectStatusLabel status={task.status} />} />

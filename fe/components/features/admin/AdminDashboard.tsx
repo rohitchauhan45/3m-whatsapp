@@ -245,11 +245,11 @@ function StatCard({
   iconColor: string;
 }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-3 md:p-3 flex items-center gap-3 shadow-sm">
-      <Icon size={38} className={`shrink-0 ${iconColor}`} strokeWidth={2} />
-      <div>
-        <p className="text-[15px] text-gray-500 font-medium">{title}</p>
-        <p className="text-[26px] font-semibold text-gray-700">{value}</p>
+    <div className="bg-white border border-gray-200 rounded-xl p-3 flex items-center gap-3 max-md:gap-2 shadow-sm min-w-0">
+      <Icon size={38} className={`shrink-0 max-md:size-6 ${iconColor}`} strokeWidth={2} />
+      <div className="min-w-0">
+        <p className="text-[15px] max-md:text-xs text-gray-500 font-medium truncate">{title}</p>
+        <p className="text-[26px] max-md:text-xl font-semibold text-gray-700 tabular-nums leading-tight">{value}</p>
       </div>
     </div>
   );
@@ -276,16 +276,16 @@ function TableFilters({
 }) {
   return (
     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
-      <div className="max-md:w-full max-md:overflow-x-auto">{leftSlot}</div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 max-md:w-full">
+      <div className="max-md:w-full max-md:overflow-x-auto touch-scroll">{leftSlot}</div>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-3 max-md:w-full">
         {rightSlot}
-        <div className="relative w-full sm:w-64">
+        <div className="relative w-full md:w-64">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={searchValue}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={searchPlaceholder}
-            className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-brand-primary/20 bg-white"
+            className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-brand-primary/20 bg-white max-md:min-h-11"
           />
         </div>
         <Dropdown
@@ -378,12 +378,12 @@ function UserStatusFilterBar({
 }
 
 const TABLE_MIN_HEIGHT = 'min-h-[420px]';
-const EMPTY_ROW_HEIGHT = 'h-[380px]';
+const EMPTY_ROW_HEIGHT = 'h-[380px] max-md:h-48';
 
 function DataTableShell({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className={`overflow-x-auto border border-gray-200 rounded-xl bg-white ${TABLE_MIN_HEIGHT} max-md:-mx-4 max-md:rounded-none max-md:border-x-0`}
+      className={`overflow-x-auto touch-scroll border border-gray-200 rounded-xl bg-white ${TABLE_MIN_HEIGHT} max-md:min-h-0 max-md:-mx-3 max-md:rounded-none max-md:border-x-0`}
     >
       {children}
     </div>
@@ -465,15 +465,16 @@ function PaginationBar({
 }) {
   const { page, limit, total, totalPages } = pagination;
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-gray-100">
-      <p className="text-sm text-gray-500">
+    <div className="flex flex-col md:flex-row items-center justify-between gap-3 pt-4 border-t border-gray-100">
+      <p className="text-sm text-gray-500 max-md:hidden">
         Page {page} of {totalPages || 1} | {total} results
       </p>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 max-md:w-full max-md:justify-between">
         <select
           value={limit}
           onChange={(e) => onLimitChange(Number(e.target.value))}
-          className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white"
+          aria-label="Rows per page"
+          className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white max-md:min-h-10"
         >
           {[10, 20, 50].map((n) => (
             <option key={n} value={n}>
@@ -481,20 +482,27 @@ function PaginationBar({
             </option>
           ))}
         </select>
-        <button
-          disabled={page <= 1}
-          onClick={() => onPageChange(page - 1)}
-          className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40"
-        >
-          Prev
-        </button>
-        <button
-          disabled={page >= totalPages}
-          onClick={() => onPageChange(page + 1)}
-          className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40"
-        >
-          Next
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => onPageChange(page - 1)}
+            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 max-md:min-h-10 max-md:px-4"
+          >
+            Prev
+          </button>
+          <span className="md:hidden text-sm font-medium text-gray-600 tabular-nums">
+            {page} / {totalPages || 1}
+          </span>
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => onPageChange(page + 1)}
+            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 max-md:min-h-10 max-md:px-4"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -793,14 +801,14 @@ export default function AdminDashboard({
   const groupedUsers = taskTableQuery.data?.groupedByUser ?? [];
 
   return (
-    <div className="animate-fade-in min-h-[calc(100dvh-11rem)] flex flex-col w-full">
+    <div className="animate-fade-in min-h-[calc(100dvh-11rem)] max-md:min-h-0 flex flex-col w-full">
       <div className="flex-1 flex flex-col min-h-0">
         {/* TASK TAB */}
         {tab === 'task' && (
-          <div className="space-y-6 flex flex-col flex-1 min-h-0">
-            <div className="space-y-5">
+          <div className="space-y-6 max-md:space-y-4 flex flex-col flex-1 min-h-0">
+            <div className="space-y-5 max-md:space-y-3">
               {taskCardsQuery.data && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 max-md:gap-2.5">
                   <StatCard
                     title="Remark"
                     value={taskCardsQuery.data.remarkTask}
@@ -841,7 +849,7 @@ export default function AdminDashboard({
               )}
 
               {onAddTask && (
-                <div className="flex justify-end items-end gap-2 max-md:w-full max-md:flex-wrap">
+                <div className="flex justify-end items-end gap-2 max-md:w-full max-md:grid max-md:grid-cols-2">
                   
                   <button
                     type="button"
@@ -867,7 +875,7 @@ export default function AdminDashboard({
                       <ChevronDown size={16} />
                     </button>
                     {reportMenuOpen && (
-                      <div className="absolute right-0 z-50 mt-2 w-40 rounded-2xl border border-gray-200 bg-white p-2 shadow-xl">
+                      <div className="absolute right-0 z-50 mt-2 w-40 max-md:w-full rounded-2xl border border-gray-200 bg-white p-2 shadow-xl">
                         <button
                           type="button"
                           onClick={() => handleDownloadReport('xlsx')}
@@ -1134,7 +1142,7 @@ export default function AdminDashboard({
         {tab === 'user' && (
           <div className="space-y-12 max-md:space-y-6 flex flex-col flex-1 min-h-0">
             {userCardsQuery.data && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 max-md:gap-2.5">
                 <StatCard
                   title="Accepted"
                   value={userCardsQuery.data.accept}
