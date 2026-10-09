@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: 3m-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "3m"
+      POSTGRES_USER: "3m_user"
+      POSTGRES_PASSWORD: "r_.h_.chauhan"
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - 3m_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U 3m_user -d 3m"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  3m_postgres_data:
