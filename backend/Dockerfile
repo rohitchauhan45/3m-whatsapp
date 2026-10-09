@@ -19,9 +19,6 @@ COPY prisma ./prisma
 RUN DATABASE_URL=postgresql://user:pass@localhost:5432/db pnpm install --frozen-lockfile --prod
 COPY --from=build /app/dist ./dist
 
-EXPOSE 4001
-# Supabase's pooled connection (port 6543, PgBouncer transaction mode) hangs on
-# Prisma's migration connectivity check, so migrate deploy runs against the
-# pooler's session-mode port (5432) while the running app keeps using the
-# original pooled DATABASE_URL from .env.
-CMD ["sh", "-c", "DATABASE_URL=$(printf '%s' \"$DATABASE_URL\" | sed 's/:6543/:5432/') npx prisma migrate deploy --config prisma.config.ts && node dist/src/start.js"]
+EXPOSE 4000
+# migrate deploy uses DATABASE_URL from compose (postgres:5432 on the Docker network).
+CMD ["sh", "-c", "npx prisma migrate deploy --config prisma.config.ts && node dist/src/start.js"]

@@ -1,21 +1,27 @@
+# Local Postgres only (optional).
+# On the server use the ROOT docker-compose.yml instead:
+#   cd ~/3m-whatsapp
+#   docker compose --env-file ./backend/.env up -d --build
+
 services:
   postgres:
     image: postgres:16
     container_name: 3m-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: "3m"
-      POSTGRES_USER: "3m_user"
-      POSTGRES_PASSWORD: "r_.h_.chauhan"
+      POSTGRES_DB: ${POSTGRES_DB:-3m}
+      POSTGRES_USER: ${POSTGRES_USER:-3m_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
       - "127.0.0.1:5433:5432"
     volumes:
       - 3m_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U 3m_user -d 3m"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
 
 volumes:
   3m_postgres_data:
+    name: 3m_postgres_data

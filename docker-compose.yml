@@ -1,4 +1,32 @@
+# Single compose file for the server: postgres + backend + frontend.
+#
+# From repo root on EC2:
+#   docker compose --env-file ./backend/.env up -d --build
+#
+# Backend talks to Postgres via Docker DNS: postgres:5432
+# Host tools (Prisma on the VM) can use localhost:5433
+
 services:
+  postgres:
+    image: postgres:16
+    container_name: 3m-postgres
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-3m}
+      POSTGRES_USER: ${POSTGRES_USER:-3m_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - 3m_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
@@ -6,19 +34,29 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend/.env
-    volumes:
-      - ./backend/.env:/app/.env:ro
+    environment:
+      # Override .env localhost URL — inside Docker use service name
+      DATABASE_URL: postgresql://${POSTGRES_USER:-3m_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-3m}?schema=public
+      PORT: ${PORT:-4000}
+      NODE_ENV: production
     ports:
-      - "127.0.0.1:4001:4001"
+      - "127.0.0.1:4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   frontend:
     build:
       context: ./fe
       args:
-        NEXT_PUBLIC_AUTH_SERVER_URL: ${NEXT_PUBLIC_AUTH_SERVER_URL}
+        NEXT_PUBLIC_AUTH_SERVER_URL: ${NEXT_PUBLIC_AUTH_SERVER_URL:-http://127.0.0.1:4000/api/v1}
     container_name: 3m-frontend
     restart: unless-stopped
     ports:
       - "127.0.0.1:4200:4200"
     depends_on:
       - backend
+
+volumes:
+  3m_postgres_data:
+    name: 3m_postgres_data
