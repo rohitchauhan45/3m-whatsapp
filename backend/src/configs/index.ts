@@ -44,15 +44,15 @@ class Config {
       envPath = plainEnvLookups.find((lookupPath) => fs.existsSync(lookupPath));
     }
     
-    if (!envPath) {
-      throw new Error(
-        `Environment file not found. Looked for ${envFile} or .env in: ${envLookups.join(
-          ", ",
-        )}`,
+    if (envPath) {
+      dotenv.config({ path: envPath });
+      logger.info(`Loaded environment file: ${envPath}`);
+    } else {
+      // Docker injects vars via compose env_file / environment — no file on disk
+      logger.info(
+        `No ${envFile} or .env file found; using process environment variables`,
       );
     }
-    dotenv.config({ path: envPath });
-    logger.info(`Loaded environment file: ${envPath}`);
 
     // 2. Load config file based on environment (optional - only if exists)
     const configFileName = `config.${environment}.json`;

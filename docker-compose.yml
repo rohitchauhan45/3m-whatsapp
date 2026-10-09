@@ -39,6 +39,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-3m_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-3m}?schema=public
       PORT: ${PORT:-4000}
       NODE_ENV: production
+    # Config loader requires a .env file on disk (env_file alone is not enough)
+    volumes:
+      - ./backend/.env:/app/.env:ro
     ports:
       - "127.0.0.1:4000:4000"
     depends_on:
