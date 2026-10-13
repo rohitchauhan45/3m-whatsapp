@@ -4,7 +4,9 @@ import logger from "../../../libraries/log/logger";
 import { AppError } from "../../../libraries/error-handling/AppError";
 import {
     sendAssignTaskMessage,
-    formatAssignTaskListForTemplate,
+    formatAssignTaskListForTemplatePreview,
+    buildAssignInteractiveMessage,
+    assignNeedsFullSummaryAfterAccept,
     sendManagerRemainingStatusMessage,
     sendManagerSummaryofAssisgnMessage,
 } from "../../messages/assignTaskMessages";
@@ -116,15 +118,15 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                 let result;
                 let sendAt: Date | undefined;
 
+                const taskItems = dailyTask.tasks.map((t) => ({
+                    name: t.name,
+                    rawStartTime: t.rawStartTime,
+                    rawEndTime: t.rawEndTime,
+                }));
+
                 if (!existingConversation) {
-                    const taskList = formatAssignTaskListForTemplate(
-                        dailyTask.tasks.map((t) => ({
-                            name: t.name,
-                            rawStartTime: t.rawStartTime,
-                            rawEndTime: t.rawEndTime,
-                        })),
-                    );
-                    // Case 1: user never touched us before → send welcome template
+                    // Case 1: first contact → template (full list if under limit, else preview)
+                    const { text: taskList } = formatAssignTaskListForTemplatePreview(taskItems);
                     sendAt = new Date();
                     result = await sendWhatsappTemplate({
                         number: child.number,
@@ -145,15 +147,8 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                         windowExpireTime !== null && windowExpireTime.getTime() > currentTime.getTime();
 
                     if (hasOpenWindow) {
-                        // Case 2: user has active 24h window → send simple interactive message (accept / decline)
-                        const body = sendAssignTaskMessage(
-                            child.name,
-                            dailyTask.tasks.map((t) => ({
-                                name: t.name,
-                                rawStartTime: t.rawStartTime,
-                                rawEndTime: t.rawEndTime,
-                            })),
-                        );
+                        // Case 2: open 24h window → interactive (full if under 1024, else preview)
+                        const { message: body } = buildAssignInteractiveMessage(child.name, taskItems);
                         sendAt = new Date();
 
                         result = await sendWhatsAppButtons({
@@ -171,14 +166,8 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                             ],
                         });
                     } else {
-                        // Case 3: user has conversation but window expired → send template with parameters & buttons
-                        const taskList = formatAssignTaskListForTemplate(
-                            dailyTask.tasks.map((t) => ({
-                                name: t.name,
-                                rawStartTime: t.rawStartTime,
-                                rawEndTime: t.rawEndTime,
-                            })),
-                        );
+                        // Case 3: window expired → template (full list if under limit, else preview)
+                        const { text: taskList } = formatAssignTaskListForTemplatePreview(taskItems);
                         sendAt = new Date();
                         result = await sendWhatsappTemplate({
                             number: child.number,
@@ -279,6 +268,12 @@ export const updateTaskAcceptFromWhatsApp = async (
 
     const dailyTask = await prisma.dailyTask.findFirst({
         where: { id, userId: user.id, deletedAt: null },
+        include: {
+            tasks: {
+                where: { deletedAt: null },
+                orderBy: [{ position: "asc" }, { startAt: "asc" }],
+            },
+        },
     });
     if (!dailyTask) {
         logger.warn(`accept/decline: dailyTask not found id=${id} userId=${user.id}`);
@@ -293,7 +288,27 @@ export const updateTaskAcceptFromWhatsApp = async (
     });
 
     if (choiceResult === AcceptStatus.accept) {
-        await sendMessageOnWhatsapp({ number: user.number, message: "Thanks for Accept the tasks" })
+        await sendMessageOnWhatsapp({ number: user.number, message: "Thanks for Accept the tasks" });
+
+        const taskItems = dailyTask.tasks.map((t) => ({
+            name: t.name,
+            rawStartTime: t.rawStartTime,
+            rawEndTime: t.rawEndTime,
+        }));
+
+        // Only resend full list when assign was truncated (over template / interactive limit)
+        if (taskItems.length > 0 && assignNeedsFullSummaryAfterAccept(user.name, taskItems)) {
+            const fullSummary = sendAssignTaskMessage(user.name, taskItems);
+            const summaryResult = await sendMessageOnWhatsapp({
+                number: user.number,
+                message: fullSummary,
+            });
+            if (!summaryResult.success) {
+                logger.warn(
+                    `accept full task summary failed userId=${user.id} detail=${summaryResult.message}`,
+                );
+            }
+        }
     }
 
     if (choiceResult === AcceptStatus.decline) {
