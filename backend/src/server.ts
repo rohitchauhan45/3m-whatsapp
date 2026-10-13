@@ -35,9 +35,8 @@ const createExpressApp = (): Express => {
   );
   
   expressApp.use(helmet());
-  expressApp.use(express.urlencoded({ extended: true }));
-  
-  expressApp.use(express.json());
+  expressApp.use(express.urlencoded({ extended: true, limit: "10mb" }));
+  expressApp.use(express.json({ limit: "10mb" }));
 
   expressApp.use((req: Request, _res: Response, next: NextFunction) => {
     // Log an info message for each incoming request
