@@ -537,12 +537,21 @@ export const finalDecisionDailyTask = async (): Promise<FinalDecisionResult> => 
                 continue;
             }
 
-            const sentOk = await sendMorningOnTrackButtonsForDailyTask(phone, dailyTask);
-            if (sentOk) {
+            const sendResult = await sendMorningOnTrackButtonsForDailyTask(phone, dailyTask);
+            if (sendResult.success) {
                 sent += 1;
             } else {
                 failedSends += 1;
-                logger.warn(`final-decision send failed user num= ${dailyTask.user.number}`);
+                logger.warn(
+                    `final-decision / morning on-track send failed ` +
+                        `userNum=${dailyTask.user.number} ` +
+                        `userId=${dailyTask.user.id} ` +
+                        `dailyTaskId=${dailyTask.id} ` +
+                        `taskCount=${dailyTask.tasks.length} ` +
+                        `bodyChars=${sendResult.bodyChars} ` +
+                        `httpStatus=${sendResult.status} ` +
+                        `detail=${sendResult.message}`,
+                );
             }
         }
 
@@ -567,10 +576,17 @@ type MorningOnTrackDailyTask = {
     tasks: { name: string }[];
 };
 
+type MorningOnTrackSendResult = {
+    success: boolean;
+    status: number;
+    message: string;
+    bodyChars: number;
+};
+
 async function sendMorningOnTrackButtonsForDailyTask(
     phone: string,
     dailyTask: MorningOnTrackDailyTask,
-): Promise<boolean> {
+): Promise<MorningOnTrackSendResult> {
     const body = finalDecisionMessage(dailyTask.user.name, dailyTask.tasks);
     const buttons = [
         { id: `ontrack_${dailyTask.id}`, title: "on track" },
@@ -579,7 +595,20 @@ async function sendMorningOnTrackButtonsForDailyTask(
     ];
 
     const result = await sendWhatsAppButtons({ number: phone, message: body, buttons });
-    return result.success;
+    if (!result.success) {
+        logger.warn(
+            `morning on-track WhatsApp API error ` +
+                `phone=${phone} dailyTaskId=${dailyTask.id} ` +
+                `bodyChars=${body.length} taskCount=${dailyTask.tasks.length} ` +
+                `httpStatus=${result.status} detail=${result.message}`,
+        );
+    }
+    return {
+        success: result.success,
+        status: result.status,
+        message: result.message,
+        bodyChars: body.length,
+    };
 }
 
 export async function sendMorningOnTrackButtonsToUser(phone: string): Promise<boolean> {
@@ -619,7 +648,15 @@ export async function sendMorningOnTrackButtonsToUser(phone: string): Promise<bo
         return false;
     }
 
-    return sendMorningOnTrackButtonsForDailyTask(phone, dailyTask);
+    const sendResult = await sendMorningOnTrackButtonsForDailyTask(phone, dailyTask);
+    if (!sendResult.success) {
+        logger.warn(
+            `sendMorningOnTrackButtonsToUser failed phone=${phone} ` +
+                `dailyTaskId=${dailyTask.id} bodyChars=${sendResult.bodyChars} ` +
+                `httpStatus=${sendResult.status} detail=${sendResult.message}`,
+        );
+    }
+    return sendResult.success;
 }
 
 export const updateFinalDecision = async (id: string, from: string, choice: "ontrack" | "no") => {
