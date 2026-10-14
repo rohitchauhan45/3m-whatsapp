@@ -1,9 +1,18 @@
+import {
+    WHATSAPP_BODY_MAX_CHARS,
+    WHATSAPP_TASK_PREVIEW_COUNT,
+    WHATSAPP_TEMPLATE_PARAM_MAX_CHARS,
+    clampWhatsAppBody,
+} from "./whatsappBodyLimit";
+
 type AssignTaskItem = { name: string; rawStartTime: string; rawEndTime: string };
 
-/** Meta body (template static + params) max is 1024; keep task_list well under that. */
-export const ASSIGN_TEMPLATE_TASK_LIST_MAX_CHARS = 700;
-/** Show only the first N tasks in assign template / preview; full list after Accept. */
-export const ASSIGN_TASK_PREVIEW_COUNT = 5;
+/** @deprecated use WHATSAPP_TEMPLATE_PARAM_MAX_CHARS */
+export const ASSIGN_TEMPLATE_TASK_LIST_MAX_CHARS = WHATSAPP_TEMPLATE_PARAM_MAX_CHARS;
+/** @deprecated use WHATSAPP_TASK_PREVIEW_COUNT */
+export const ASSIGN_TASK_PREVIEW_COUNT = WHATSAPP_TASK_PREVIEW_COUNT;
+/** @deprecated use WHATSAPP_BODY_MAX_CHARS */
+export const ASSIGN_INTERACTIVE_BODY_MAX_CHARS = WHATSAPP_BODY_MAX_CHARS;
 
 const formatTaskLine = (t: AssignTaskItem, separator: "-->" | "--->"): string =>
     `${t.rawStartTime.trim()} ${separator} ${t.rawEndTime.trim()} : *📌${t.name.trim()}*`;
@@ -11,31 +20,44 @@ const formatTaskLine = (t: AssignTaskItem, separator: "-->" | "--->"): string =>
 const formatTaskLineTemplate = (t: AssignTaskItem): string =>
     `${t.rawStartTime.trim()} --> ${t.rawEndTime.trim()} : 📌 *${t.name.trim()}*`;
 
-/** WhatsApp interactive / button message body max. */
-export const ASSIGN_INTERACTIVE_BODY_MAX_CHARS = 1024;
-
+/**
+ * Assign message body — always ≤ 1024 chars (Meta interactive / body limit).
+ * If full list is too long: first few tasks + "....".
+ */
 export const sendAssignTaskMessage = (
     userName: string,
     tasks: AssignTaskItem[],
-    options?: { preview?: boolean },
 ): string => {
-    const preview = options?.preview === true;
-    const shown = preview ? tasks.slice(0, ASSIGN_TASK_PREVIEW_COUNT) : tasks;
-    const truncated = preview && tasks.length > shown.length;
+    const build = (shown: AssignTaskItem[], truncated: boolean): string => {
+        const lines: string[] = [];
+        lines.push(`Hi ${userName.trim()}`);
+        lines.push("");
+        lines.push("📋 Tomorrow's tasks:");
+        lines.push("");
+        shown.forEach((t) => {
+            lines.push(formatTaskLine(t, "--->"));
+        });
+        if (truncated) {
+            lines.push("....");
+            lines.push(`(+${tasks.length - shown.length} more tasks)`);
+        }
+        return lines.join("\n");
+    };
 
-    const lines: string[] = [];
-    lines.push(`Hi ${userName.trim()}`);
-    lines.push("");
-    lines.push("📋 Tomorrow's tasks:");
-    lines.push("");
-    shown.forEach((t) => {
-        lines.push(formatTaskLine(t, "--->"));
-    });
-    if (truncated) {
-        lines.push("....");
-        lines.push(`(+${tasks.length - shown.length} more — full list after you Accept)`);
+    const full = build(tasks, false);
+    if (full.length <= WHATSAPP_BODY_MAX_CHARS) {
+        return full;
     }
-    return lines.join("\n");
+
+    let count = Math.min(WHATSAPP_TASK_PREVIEW_COUNT, tasks.length);
+    let message = build(tasks.slice(0, count), tasks.length > count);
+
+    while (message.length > WHATSAPP_BODY_MAX_CHARS && count > 1) {
+        count -= 1;
+        message = build(tasks.slice(0, count), true);
+    }
+
+    return clampWhatsAppBody(message);
 };
 
 /** Single-line task list for WhatsApp template {{task_list}} (no newlines allowed). */
@@ -46,11 +68,12 @@ export const formatAssignTaskListForTemplate = (
 };
 
 /**
- * Template {{task_list}}: full list when under the char budget; otherwise first 4–5 tasks + "....".
+ * Template {{task_list}}: full list when under char budget; otherwise first tasks + "....".
+ * Always ≤ maxChars so Meta body stays under 1024.
  */
 export const formatAssignTaskListForTemplatePreview = (
     tasks: AssignTaskItem[],
-    maxChars: number = ASSIGN_TEMPLATE_TASK_LIST_MAX_CHARS,
+    maxChars: number = WHATSAPP_TEMPLATE_PARAM_MAX_CHARS,
 ): { text: string; truncated: boolean } => {
     if (tasks.length === 0) {
         return { text: "No tasks", truncated: false };
@@ -62,7 +85,7 @@ export const formatAssignTaskListForTemplatePreview = (
         return { text: full, truncated: false };
     }
 
-    let count = Math.min(ASSIGN_TASK_PREVIEW_COUNT, tasks.length);
+    let count = Math.min(WHATSAPP_TASK_PREVIEW_COUNT, tasks.length);
     let text = join(tasks.slice(0, count));
 
     while (text.length > maxChars && count > 1) {
@@ -78,37 +101,23 @@ export const formatAssignTaskListForTemplatePreview = (
     return { text, truncated: true };
 };
 
-/**
- * Interactive assign body: full list when under 1024 chars; otherwise preview + ellipsis.
- */
+/** Interactive assign body — always ≤ 1024 chars. */
 export const buildAssignInteractiveMessage = (
     userName: string,
     tasks: AssignTaskItem[],
 ): { message: string; truncated: boolean } => {
-    const full = sendAssignTaskMessage(userName, tasks);
-    if (full.length <= ASSIGN_INTERACTIVE_BODY_MAX_CHARS) {
-        return { message: full, truncated: false };
-    }
+    const full = (() => {
+        const lines: string[] = [];
+        lines.push(`Hi ${userName.trim()}`);
+        lines.push("");
+        lines.push("📋 Tomorrow's tasks:");
+        lines.push("");
+        tasks.forEach((t) => lines.push(formatTaskLine(t, "--->")));
+        return lines.join("\n");
+    })();
 
-    let message = sendAssignTaskMessage(userName, tasks, { preview: true });
-    if (message.length > ASSIGN_INTERACTIVE_BODY_MAX_CHARS) {
-        message = `${message.slice(0, ASSIGN_INTERACTIVE_BODY_MAX_CHARS - 4)}\n....`;
-    }
-    return { message, truncated: true };
-};
-
-/** True when assign content did not fit in one template/interactive message — send full list after Accept. */
-export const assignNeedsFullSummaryAfterAccept = (
-    userName: string,
-    tasks: AssignTaskItem[],
-): boolean => {
-    if (formatAssignTaskListForTemplate(tasks).length > ASSIGN_TEMPLATE_TASK_LIST_MAX_CHARS) {
-        return true;
-    }
-    if (sendAssignTaskMessage(userName, tasks).length > ASSIGN_INTERACTIVE_BODY_MAX_CHARS) {
-        return true;
-    }
-    return false;
+    const message = sendAssignTaskMessage(userName, tasks);
+    return { message, truncated: full.length > WHATSAPP_BODY_MAX_CHARS };
 };
 
 export const sendManagerSummaryofAssisgnMessage = (

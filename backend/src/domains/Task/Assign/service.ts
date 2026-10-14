@@ -3,10 +3,8 @@ import { prisma } from "../../../libraries/db";
 import logger from "../../../libraries/log/logger";
 import { AppError } from "../../../libraries/error-handling/AppError";
 import {
-    sendAssignTaskMessage,
     formatAssignTaskListForTemplatePreview,
     buildAssignInteractiveMessage,
-    assignNeedsFullSummaryAfterAccept,
     sendManagerRemainingStatusMessage,
     sendManagerSummaryofAssisgnMessage,
 } from "../../messages/assignTaskMessages";
@@ -268,12 +266,6 @@ export const updateTaskAcceptFromWhatsApp = async (
 
     const dailyTask = await prisma.dailyTask.findFirst({
         where: { id, userId: user.id, deletedAt: null },
-        include: {
-            tasks: {
-                where: { deletedAt: null },
-                orderBy: [{ position: "asc" }, { startAt: "asc" }],
-            },
-        },
     });
     if (!dailyTask) {
         logger.warn(`accept/decline: dailyTask not found id=${id} userId=${user.id}`);
@@ -289,26 +281,6 @@ export const updateTaskAcceptFromWhatsApp = async (
 
     if (choiceResult === AcceptStatus.accept) {
         await sendMessageOnWhatsapp({ number: user.number, message: "Thanks for Accept the tasks" });
-
-        const taskItems = dailyTask.tasks.map((t) => ({
-            name: t.name,
-            rawStartTime: t.rawStartTime,
-            rawEndTime: t.rawEndTime,
-        }));
-
-        // Only resend full list when assign was truncated (over template / interactive limit)
-        if (taskItems.length > 0 && assignNeedsFullSummaryAfterAccept(user.name, taskItems)) {
-            const fullSummary = sendAssignTaskMessage(user.name, taskItems);
-            const summaryResult = await sendMessageOnWhatsapp({
-                number: user.number,
-                message: fullSummary,
-            });
-            if (!summaryResult.success) {
-                logger.warn(
-                    `accept full task summary failed userId=${user.id} detail=${summaryResult.message}`,
-                );
-            }
-        }
     }
 
     if (choiceResult === AcceptStatus.decline) {
