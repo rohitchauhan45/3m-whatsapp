@@ -37,6 +37,7 @@ export async function notifyAdminError(context: string): Promise<void> {
         const result = await sendWhatsappTemplate({
             number: adminUser.number,
             tname: DEVELOPER_ERROR_TEMPLATE,
+            type: "errorInBackend",
             parameters: [{ parameter_name: "error_name", text: errorName }],
         });
 
@@ -51,7 +52,10 @@ export async function notifyAdminError(context: string): Promise<void> {
 }
 
 /** Notify admin via WhatsApp with an informational message (e.g. import success summary). */
-export async function notifyAdminMessage(message: string): Promise<void> {
+export async function notifyAdminMessage(
+    message: string,
+    type: string = "errorInBackend",
+): Promise<void> {
     try {
         const adminUser = await getAdminUser();
         if (!adminUser?.number?.trim()) {
@@ -61,6 +65,7 @@ export async function notifyAdminMessage(message: string): Promise<void> {
         await sendMessageOnWhatsapp({
             number: adminUser.number,
             message,
+            type,
         });
     } catch (notifyErr) {
         logger.error("notifyAdminMessage failed", notifyErr);

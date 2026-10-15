@@ -69,6 +69,14 @@ enum Setting{
   onTrackmsg
 }
 
+enum messageStatus{
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
 enum ProjectTaskType {
   GROUP
   TASK
@@ -81,6 +89,12 @@ enum ProjectTaskStatus {
   COMPLETED
   ON_HOLD
   CANCELLED
+}
+
+enum MessageStyle{
+  TEMPLATE
+  TEXT
+  INTERACTIVE
 }
 
 model User{
@@ -244,23 +258,6 @@ model Cron {
   @@index([name])
 }
 
-model WhatsAppConversation {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  number          String   
- 
-  lastIncomingAt  DateTime?
-  lastOutgoingAt  DateTime?
-  windowExpiresAt DateTime?
-
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  user User @relation(fields:[userId], references:[id], onDelete:Cascade)
-
-  @@index([userId])
-}
-
 model AdminSettings {
   id        String   @id @default(cuid())
   adminId   String   
@@ -385,4 +382,67 @@ model ProjectTask {
   @@index([projectId])
   @@index([parentId])
   @@index([projectId,parentId,position])
+}
+
+model WhatsAppConversation {
+  id                      String         @id @default(cuid())
+  
+  userId                  String         @unique
+  user                    User           @relation(fields:[userId], references:[id], onDelete:Cascade)
+  
+  number                  String         @unique
+
+  lastIncomingMessageId   String?
+  lastIncomingMessageAt   DateTime?
+  lastIncomingMessageType String?
+
+  lastSentMessageId       String?
+  lastSentMessageAt       DateTime?
+  lastSentMessageType     String?
+  lastSentMessageStyle    MessageStyle?
+  lastSentMessageStatus   messageStatus? 
+
+  windowExpiresAt         DateTime?
+
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+
+  messages                Message[]
+
+  @@index([windowExpiresAt])
+}
+
+model Message{
+  id                String               @id @default(cuid())
+  conversationId    String
+  conversation      WhatsAppConversation @relation(fields:[conversationId] , references:[id] , onDelete:Cascade)
+
+  style             MessageStyle
+  type              String
+  body              String               @db.Text
+  length            Int 
+
+  whatsappMessageId String?              @unique
+
+  status            messageStatus        @default(PENDING)
+
+  createdAt         DateTime             @default(now())
+  sendAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  failedAt          DateTime?
+
+  errorCode         String?
+  errorTitle        String?
+  errorDetails      String?
+  errorPayload      Json?
+
+  attemptCount      Int                  @default(1)
+  lastAttemptAt     DateTime?
+
+  updatedAt         DateTime             @updatedAt  
+
+  @@index([conversationId,createdAt])
+  @@index([status,createdAt])
+  @@index([type,status]) 
 }

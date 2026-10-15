@@ -4,12 +4,15 @@ import logger from "../../libraries/log/logger";
 import { AppError } from "../../libraries/error-handling/AppError";
 import { notifyAdminError } from "../../libraries/util/notifyAdminError";
 import {
+    normalizeWhatsAppNumber,
     sanitizeWhatsAppTemplateParam,
     sendWhatsappTemplate,
 } from "../whtsapp/sendWhatsApp";
+import { markIncomingOnConversation } from "../whtsapp/messageLog";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const MANAGER_REMINDER_TEMPLATE = "manager_reminder";
+const MANAGER_REMINDER_TYPE = "managerReminder";
 const MANAGER_REMINDER_BUTTON_ID = "hii";
 
 export type ManagerWindowReminderResult = {
@@ -24,6 +27,12 @@ type ManagerContact = {
     number: string | null;
 };
 
+type ReminderConversation = {
+    windowExpiresAt: Date | null;
+    lastSentMessageAt: Date | null;
+    lastSentMessageType: string | null;
+};
+
 export function isWhatsAppWindowOpen(
     conversation: { windowExpiresAt: Date | null } | null,
     now = new Date(),
@@ -33,19 +42,50 @@ export function isWhatsAppWindowOpen(
     return expiresAt.getTime() > now.getTime();
 }
 
-/** True when reminder should be sent (24h window closed, and last reminder was 24h+ ago). */
+/**
+ * Reminder only when:
+ * 1) 24h customer window is closed (or never opened)
+ * 2) no managerReminder was sent in the last 24 hours
+ */
 export function shouldSendManagerReminder(
-    conversation: { windowExpiresAt: Date | null; lastOutgoingAt: Date | null } | null,
+    conversation: ReminderConversation | null,
+    lastReminderAt: Date | null,
     now = new Date(),
 ): boolean {
     if (isWhatsAppWindowOpen(conversation, now)) return false;
 
-    const lastReminderAt = conversation?.lastOutgoingAt;
-    if (lastReminderAt && now.getTime() - lastReminderAt.getTime() < DAY_IN_MS) {
+    const reminderAt =
+        lastReminderAt ??
+        (conversation?.lastSentMessageType === MANAGER_REMINDER_TYPE
+            ? conversation.lastSentMessageAt
+            : null);
+
+    if (reminderAt && now.getTime() - reminderAt.getTime() < DAY_IN_MS) {
         return false;
     }
 
     return true;
+}
+
+/** Stamp reminder cooldown on conversation even if messageLog lookup fails. */
+async function markManagerReminderSent(manager: ManagerContact, at: Date): Promise<void> {
+    const phone = normalizeWhatsAppNumber(manager.number ?? "") || (manager.number?.trim() ?? "");
+    if (!phone) return;
+
+    await prisma.whatsAppConversation.upsert({
+        where: { userId: manager.id },
+        create: {
+            userId: manager.id,
+            number: phone,
+            lastSentMessageAt: at,
+            lastSentMessageType: MANAGER_REMINDER_TYPE,
+        },
+        update: {
+            number: phone,
+            lastSentMessageAt: at,
+            lastSentMessageType: MANAGER_REMINDER_TYPE,
+        },
+    });
 }
 
 async function sendManagerReminderTemplate(manager: ManagerContact): Promise<boolean> {
@@ -55,6 +95,7 @@ async function sendManagerReminderTemplate(manager: ManagerContact): Promise<boo
     const result = await sendWhatsappTemplate({
         number: phone,
         tname: MANAGER_REMINDER_TEMPLATE,
+        type: MANAGER_REMINDER_TYPE,
         parameters: [
             {
                 parameter_name: "name",
@@ -68,12 +109,24 @@ async function sendManagerReminderTemplate(manager: ManagerContact): Promise<boo
         logger.warn(
             `manager_reminder template failed managerId=${manager.id} number=${phone} detail=${result.message}`,
         );
+        return false;
     }
 
-    return result.success;
+    // Always stamp cooldown locally (do not rely only on messageLog).
+    await markManagerReminderSent(manager, new Date());
+    return true;
 }
 
-/** Send manager_reminder to managers whose 24h WhatsApp window has expired. */
+async function getLastManagerReminderAt(conversationId: string): Promise<Date | null> {
+    const last = await prisma.message.findFirst({
+        where: { conversationId, type: MANAGER_REMINDER_TYPE },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true, sendAt: true },
+    });
+    return last?.sendAt ?? last?.createdAt ?? null;
+}
+
+/** Send manager_reminder only if window expired and not already reminded in last 24h. */
 export async function sendManagerWindowReminders(): Promise<ManagerWindowReminderResult> {
     const now = new Date();
     let sent = 0;
@@ -86,9 +139,6 @@ export async function sendManagerWindowReminders(): Promise<ManagerWindowReminde
             id: true,
             name: true,
             number: true,
-            conversation: {
-                select: { windowExpiresAt: true, lastOutgoingAt: true },
-            },
         },
     });
 
@@ -99,8 +149,21 @@ export async function sendManagerWindowReminders(): Promise<ManagerWindowReminde
             continue;
         }
 
-        const conversation = manager.conversation[0] ?? null;
-        if (!shouldSendManagerReminder(conversation, now)) {
+        const conversation = await prisma.whatsAppConversation.findUnique({
+            where: { userId: manager.id },
+            select: {
+                id: true,
+                windowExpiresAt: true,
+                lastSentMessageAt: true,
+                lastSentMessageType: true,
+            },
+        });
+
+        const lastReminderAt = conversation
+            ? await getLastManagerReminderAt(conversation.id)
+            : null;
+
+        if (!shouldSendManagerReminder(conversation, lastReminderAt, now)) {
             skipped += 1;
             continue;
         }
@@ -112,11 +175,6 @@ export async function sendManagerWindowReminders(): Promise<ManagerWindowReminde
         });
 
         if (ok) {
-            await prisma.whatsAppConversation.upsert({
-                where: { userId: manager.id },
-                update: { lastOutgoingAt: now, number: phone },
-                create: { userId: manager.id, number: phone, lastOutgoingAt: now },
-            });
             sent += 1;
             logger.info(`manager_reminder sent managerId=${manager.id}`);
         } else {
@@ -130,23 +188,8 @@ export async function sendManagerWindowReminders(): Promise<ManagerWindowReminde
 
 export const touchConversation = async (userId: string, number: string) => {
     try {
-        const now = new Date();
-
-        return await prisma.whatsAppConversation.upsert({
-            where: {
-                userId,
-            },
-            update: {
-                lastIncomingAt: now,
-                windowExpiresAt: new Date(now.getTime() + DAY_IN_MS),
-            },
-            create: {
-                userId,
-                number,
-                lastIncomingAt: now,
-                windowExpiresAt: new Date(now.getTime() + DAY_IN_MS),
-            },
-        });
+        await markIncomingOnConversation(userId, number);
+        return await prisma.whatsAppConversation.findUnique({ where: { userId } });
     } catch (error) {
         logger.error("Error in Add whatsapp Conversation", error);
         await notifyAdminError("add whatsapp conversation");

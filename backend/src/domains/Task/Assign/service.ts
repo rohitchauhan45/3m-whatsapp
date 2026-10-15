@@ -129,6 +129,7 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                     result = await sendWhatsappTemplate({
                         number: child.number,
                         tname: "daily_task_assignment",
+                        type: "assignTask",
                         parameters: [
                             { parameter_name: "user_name", text: child.name },
                             { parameter_name: "task_list", text: taskList },
@@ -152,6 +153,7 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                         result = await sendWhatsAppButtons({
                             number: phone,
                             message: body,
+                            type: "assignTask",
                             buttons: [
                                 {
                                     title: "Accept",
@@ -170,6 +172,7 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                         result = await sendWhatsappTemplate({
                             number: child.number,
                             tname: "daily_task_assignment",
+                            type: "assignTask",
                             parameters: [
                                 { parameter_name: "user_name", text: child.name },
                                 { parameter_name: "task_list", text: taskList },
@@ -214,6 +217,7 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                 const mgrResult = await sendMessageOnWhatsapp({
                     number: managerPhone,
                     message: summaryBody,
+                    type: "assignTaskSummary",
                 });
                 if (mgrResult.success) {
                     managerSummarySent = true;
@@ -280,7 +284,11 @@ export const updateTaskAcceptFromWhatsApp = async (
     });
 
     if (choiceResult === AcceptStatus.accept) {
-        await sendMessageOnWhatsapp({ number: user.number, message: "Thanks for Accept the tasks" });
+        await sendMessageOnWhatsapp({
+            number: user.number,
+            message: "Thanks for Accept the tasks",
+            type: "assignAcceptThanks",
+        });
     }
 
     if (choiceResult === AcceptStatus.decline) {
@@ -297,7 +305,11 @@ export const updateTaskAcceptFromWhatsApp = async (
         }
 
         const msg = reasonMessage("decline", user.name)
-        await sendMessageOnWhatsapp({ number: user.number, message: msg })
+        await sendMessageOnWhatsapp({
+            number: user.number,
+            message: msg,
+            type: "assignDeclineAskReason",
+        })
     }
 }
 
@@ -442,7 +454,11 @@ export const sendRemaingstatusTomanager = async (): Promise<RemainingStatusResul
             }
 
             const body = sendManagerRemainingStatusMessage(manager.name, members, declined);
-            const result = await sendMessageOnWhatsapp({ number: managerPhone, message: body });
+            const result = await sendMessageOnWhatsapp({
+                number: managerPhone,
+                message: body,
+                type: "remainingStatusToManager",
+            });
 
             if (result.success) {
                 sent += 1;
@@ -566,7 +582,12 @@ async function sendMorningOnTrackButtonsForDailyTask(
         { id: `absent_${dailyTask.id}`, title: "Absent" },
     ];
 
-    const result = await sendWhatsAppButtons({ number: phone, message: body, buttons });
+    const result = await sendWhatsAppButtons({
+        number: phone,
+        message: body,
+        buttons,
+        type: "MorningOnTrack",
+    });
     if (!result.success) {
         logger.warn(
             `morning on-track WhatsApp API error ` +
@@ -608,6 +629,7 @@ export async function sendMorningOnTrackButtonsToUser(phone: string): Promise<bo
         await sendMessageOnWhatsapp({
             number: phone,
             message: "You are already on-track !",
+            type: "morningOnTrackAck",
         });
         return false;
     }
@@ -616,6 +638,7 @@ export async function sendMorningOnTrackButtonsToUser(phone: string): Promise<bo
         await sendMessageOnWhatsapp({
             number: phone,
             message: "No morning on track tasks found for today.",
+            type: "taskNotFound",
         });
         return false;
     }
@@ -639,6 +662,7 @@ export const updateFinalDecision = async (id: string, from: string, choice: "ont
             await sendMessageOnWhatsapp({
                 number: from,
                 message: "User not found. Please contact your manager.",
+                type: "userNotFound",
             });
             return;
         }
@@ -647,13 +671,21 @@ export const updateFinalDecision = async (id: string, from: string, choice: "ont
             where: { id, userId: user.id, deletedAt: null },
         });
         if (!dailyTask) {
-            await sendMessageOnWhatsapp({ number: user.number, message: "Daily task not found." });
+            await sendMessageOnWhatsapp({
+                number: user.number,
+                message: "Daily task not found.",
+                type: "taskNotFound",
+            });
             return;
         }
 
         const status = normlizeChoiceforDaily(choice);
         if (!status) {
-            await sendMessageOnWhatsapp({ number: user.number, message: "Invalid choice." });
+            await sendMessageOnWhatsapp({
+                number: user.number,
+                message: "Invalid choice.",
+                type: "invalidChoice",
+            });
             return;
         }
 
@@ -666,6 +698,7 @@ export const updateFinalDecision = async (id: string, from: string, choice: "ont
             await sendMessageOnWhatsapp({
                 number: user.number,
                 message: "Thank you! Marked as on track.",
+                type: "morningOnTrackAck",
             });
 
             await handlePreviousStartTask(updateDailyTask.id, user.number)
@@ -686,7 +719,11 @@ export const updateFinalDecision = async (id: string, from: string, choice: "ont
             }
 
             const msg = reasonMessage("remark", user.name);
-            await sendMessageOnWhatsapp({ number: user.number, message: msg });
+            await sendMessageOnWhatsapp({
+                number: user.number,
+                message: msg,
+                type: "morningRemarkAskReason",
+            });
         }
 
         if (updateDailyTask.finaldecision === onTrackStatus.absent) {
@@ -702,7 +739,11 @@ export const updateFinalDecision = async (id: string, from: string, choice: "ont
             }
 
             const msg = reasonMessage("absent", user.name);
-            await sendMessageOnWhatsapp({ number: user.number, message: msg });
+            await sendMessageOnWhatsapp({
+                number: user.number,
+                message: msg,
+                type: "morningAbsentAskReason",
+            });
         }
     } catch (error) {
         logger.error(`Error in Handle/update finalDecision for daily Task : `, error);
@@ -815,6 +856,7 @@ export const handleFinalDecisionRemarkReason = async (
                 const mgrResult = await sendMessageOnWhatsapp({
                     number: managerPhone,
                     message: msg,
+                    type: "morningRemarkToManager",
                 });
                 if (!mgrResult.success) {
                     logger.warn(
@@ -884,6 +926,7 @@ export const handleFinalDecisionAbsentReason = async (from: string, reason: stri
                 const mgrResult = await sendMessageOnWhatsapp({
                     number: managerPhone,
                     message: msg,
+                    type: "morningAbsentToManager",
                 });
                 if (!mgrResult.success) {
                     logger.warn(

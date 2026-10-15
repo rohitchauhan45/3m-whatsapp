@@ -1,5 +1,7 @@
+import { MessageStyle, messageStatus } from "@prisma/client";
 import axios, { isAxiosError } from "axios";
 import dotenv from "dotenv";
+import { saveOutgoingMessage } from "./messageLog";
 
 dotenv.config();
 
@@ -15,20 +17,24 @@ export function normalizeWhatsAppNumber(raw: string): string {
 }
 
 interface whatsappButton {
-    title: string,
-    id: string
+    title: string;
+    id: string;
 }
 
 interface whatsappmessagePayload {
-    number: string,
-    message: string
+    number: string;
+    message: string;
+    /** Required business type string, e.g. "assignTask" — saved on Message.type. */
+    type: string;
 }
 
 interface SendWhatsAppButtonPayload {
-    number: string,
-    message: string,
-    buttons: whatsappButton[]
-};
+    number: string;
+    message: string;
+    buttons: whatsappButton[];
+    /** Required business type string, e.g. "MorningOnTrack". */
+    type: string;
+}
 
 interface WhatsAppTemplateBodyParameter {
     parameter_name: string;
@@ -36,10 +42,12 @@ interface WhatsAppTemplateBodyParameter {
 }
 
 interface whatsappTemplatepayload {
-    tname: string,
-    number: string,
-    parameters?: WhatsAppTemplateBodyParameter[]
-    buttons?: whatsappButton[]
+    tname: string;
+    number: string;
+    parameters?: WhatsAppTemplateBodyParameter[];
+    buttons?: whatsappButton[];
+    /** Required business type string, e.g. "welcome". */
+    type: string;
 }
 
 function axiosErrorPayload(error: unknown): string {
@@ -60,8 +68,65 @@ export function sanitizeWhatsAppTemplateParam(text: string): string {
         .trim();
 }
 
+function parseGraphError(detail: string): {
+    errorCode?: string;
+    errorTitle?: string;
+    errorDetails?: string;
+} {
+    try {
+        const parsed = JSON.parse(detail) as {
+            error?: { code?: number | string; message?: string; error_data?: { details?: string } };
+        };
+        const err = parsed?.error;
+        if (!err) return { errorDetails: detail };
+        return {
+            errorCode: err.code != null ? String(err.code) : undefined,
+            errorTitle: err.message,
+            errorDetails: err.error_data?.details ?? err.message ?? detail,
+        };
+    } catch {
+        return { errorDetails: detail };
+    }
+}
+
+async function logSendResult(opts: {
+    number: string;
+    body: string;
+    style: MessageStyle;
+    type: string;
+    success: boolean;
+    whatsappMessageId?: string;
+    failDetail?: string;
+}): Promise<void> {
+    if (opts.success) {
+        await saveOutgoingMessage({
+            number: opts.number,
+            body: opts.body,
+            style: opts.style,
+            type: opts.type,
+            whatsappMessageId: opts.whatsappMessageId ?? null,
+            status: messageStatus.SENT,
+        });
+        return;
+    }
+
+    const parsed = parseGraphError(opts.failDetail ?? "");
+    await saveOutgoingMessage({
+        number: opts.number,
+        body: opts.body,
+        style: opts.style,
+        type: opts.type,
+        whatsappMessageId: null,
+        status: messageStatus.FAILED,
+        errorCode: parsed.errorCode,
+        errorTitle: parsed.errorTitle,
+        errorDetails: parsed.errorDetails,
+        errorPayload: opts.failDetail ? opts.failDetail : null,
+    });
+}
+
 export const sendMessageOnWhatsapp = async (data: whatsappmessagePayload) => {
-    const { number, message } = data;
+    const { number, message, type } = data;
 
     const to = normalizeWhatsAppNumber(number);
     if (!to) {
@@ -95,37 +160,73 @@ export const sendMessageOnWhatsapp = async (data: whatsappmessagePayload) => {
                     "Content-Type": "application/json",
                 },
                 validateStatus: () => true,
-            }
+            },
         );
 
         if (response.status >= 200 && response.status < 300) {
             const id = response.data.messages?.[0]?.id;
-            if (id) return { success: true, status: 200, message: id };
+            if (id) {
+                await logSendResult({
+                    number: to,
+                    body: message,
+                    style: MessageStyle.TEXT,
+                    type,
+                    success: true,
+                    whatsappMessageId: id,
+                });
+                return { success: true, status: 200, message: id };
+            }
+            const failDetail = JSON.stringify(response.data);
+            await logSendResult({
+                number: to,
+                body: message,
+                style: MessageStyle.TEXT,
+                type,
+                success: false,
+                failDetail,
+            });
             return {
                 success: false,
                 status: response.status,
-                message: JSON.stringify(response.data),
+                message: failDetail,
             };
         }
 
+        const failDetail = JSON.stringify(response.data);
+        await logSendResult({
+            number: to,
+            body: message,
+            style: MessageStyle.TEXT,
+            type,
+            success: false,
+            failDetail,
+        });
         return {
             success: false,
             status: response.status,
-            message: JSON.stringify(response.data),
+            message: failDetail,
         };
     } catch (error) {
-        console.error("WhatsApp send failed:", axiosErrorPayload(error));
+        const failDetail = axiosErrorPayload(error);
+        await logSendResult({
+            number: to,
+            body: message,
+            style: MessageStyle.TEXT,
+            type,
+            success: false,
+            failDetail,
+        });
+        console.error("WhatsApp send failed:", failDetail);
         return {
             success: false,
             status: 500,
-            message: axiosErrorPayload(error),
+            message: failDetail,
         };
     }
 };
 
 export const sendWhatsAppButtons = async (data: SendWhatsAppButtonPayload) => {
-
-    const { number, message, buttons } = data;
+    const { number, message, buttons, type } = data;
 
     const to = normalizeWhatsAppNumber(number);
     if (!to) {
@@ -150,6 +251,8 @@ export const sendWhatsAppButtons = async (data: SendWhatsAppButtonPayload) => {
 
     const url = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${WHATSAPP_PHONE_ID}/messages`;
 
+    const style = MessageStyle.INTERACTIVE;
+
     try {
         const response = await axios.post<{
             messages?: { id: string }[];
@@ -162,55 +265,92 @@ export const sendWhatsAppButtons = async (data: SendWhatsAppButtonPayload) => {
                 interactive: {
                     type: "button",
                     body: {
-                        text: message
+                        text: message,
                     },
                     action: {
                         buttons: buttons.map((btn) => ({
                             type: "reply",
                             reply: {
                                 id: btn.id.trim().slice(0, BUTTON_REPLY_ID_MAX),
-                                title: btn.title
-                            }
-                        }))
-                    }
-                }
+                                title: btn.title,
+                            },
+                        })),
+                    },
+                },
             },
             {
                 headers: {
                     Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
                     "Content-Type": "application/json",
                 },
-                validateStatus: () => true
-            }
+                validateStatus: () => true,
+            },
         );
 
-        if (response.status >= 200 && response.status < 300) {  
+        if (response.status >= 200 && response.status < 300) {
             const id = response.data.messages?.[0]?.id;
-            if (id) return { success: true, status: 200, message: id };
+            if (id) {
+                await logSendResult({
+                    number: to,
+                    body: message,
+                    style,
+                    type,
+                    success: true,
+                    whatsappMessageId: id,
+                });
+                return { success: true, status: 200, message: id };
+            }
+            const failDetail = JSON.stringify(response.data);
+            await logSendResult({
+                number: to,
+                body: message,
+                style,
+                type,
+                success: false,
+                failDetail,
+            });
             return {
                 success: false,
                 status: response.status,
-                message: JSON.stringify(response.data),
+                message: failDetail,
             };
         }
 
+        const failDetail = JSON.stringify(response.data);
+        await logSendResult({
+            number: to,
+            body: message,
+            style,
+            type,
+            success: false,
+            failDetail,
+        });
         return {
             success: false,
             status: response.status,
-            message: JSON.stringify(response.data),
-        };  
+            message: failDetail,
+        };
     } catch (error: unknown) {
-        console.error("WhatsApp interactive send failed:", axiosErrorPayload(error));
+        const failDetail = axiosErrorPayload(error);
+        await logSendResult({
+            number: to,
+            body: message,
+            style,
+            type,
+            success: false,
+            failDetail,
+        });
+        console.error("WhatsApp interactive send failed:", failDetail);
         return {
             success: false,
             status: 500,
-            message: axiosErrorPayload(error),
+            message: failDetail,
         };
     }
 };
 
 export const sendWhatsappTemplate = async (data: whatsappTemplatepayload) => {
-    const { number, tname, parameters = [], buttons } = data;
+    const { number, tname, parameters = [], buttons, type } = data;
 
     const to = normalizeWhatsAppNumber(number);
     if (!to) {
@@ -227,9 +367,15 @@ export const sendWhatsappTemplate = async (data: whatsappTemplatepayload) => {
 
     const url = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${WHATSAPP_PHONE_ID}/messages`;
 
+    // Body preview for DB (template name + params)
+    const bodyForLog = [
+        `template:${tname}`,
+        ...parameters.map((p) => `${p.parameter_name}=${p.text}`),
+    ].join(" | ");
+
     try {
         const response = await axios.post<{
-            messages?: { id: string }[]
+            messages?: { id: string }[];
         }>(
             url,
             {
@@ -245,7 +391,7 @@ export const sendWhatsappTemplate = async (data: whatsappTemplatepayload) => {
                             text: string;
                         }[];
                     };
-                    
+
                     type QuickReplyButtonComponent = {
                         type: "button";
                         sub_type: "quick_reply";
@@ -282,43 +428,79 @@ export const sendWhatsappTemplate = async (data: whatsappTemplatepayload) => {
                         language: { code: "en" },
                         ...(components.length > 0 ? { components } : {}),
                     };
-                })()
+                })(),
             },
             {
                 headers: {
                     Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
-                validateStatus: () => true
+                validateStatus: () => true,
+            },
+        );
+
+        if (response.status >= 200 && response.status < 300) {
+            const id = response.data.messages?.[0]?.id;
+
+            if (id) {
+                await logSendResult({
+                    number: to,
+                    body: bodyForLog,
+                    style: MessageStyle.TEMPLATE,
+                    type,
+                    success: true,
+                    whatsappMessageId: id,
+                });
+                return { success: true, status: 200, message: id };
             }
-        )
-
-        if (response.status >= 200 && response.status <= 300) {
-            const id = response.data.messages?.[0]?.id
-
-            if (id) return { success: true, status: 200, message: id }
+            const failDetail = JSON.stringify(response.data);
+            await logSendResult({
+                number: to,
+                body: bodyForLog,
+                style: MessageStyle.TEMPLATE,
+                type,
+                success: false,
+                failDetail,
+            });
             return {
                 success: false,
                 status: response.status,
-                message: JSON.stringify(response.data)
-            }
+                message: failDetail,
+            };
         }
 
+        const failDetail = JSON.stringify(response.data);
+        await logSendResult({
+            number: to,
+            body: bodyForLog,
+            style: MessageStyle.TEMPLATE,
+            type,
+            success: false,
+            failDetail,
+        });
         return {
             success: false,
             status: response.status,
-            message: JSON.stringify(response.data),
+            message: failDetail,
         };
-    }
-    catch (error: unknown) {
-        console.error("whatsapp template send failed", axiosErrorPayload(error))
+    } catch (error: unknown) {
+        const failDetail = axiosErrorPayload(error);
+        await logSendResult({
+            number: to,
+            body: bodyForLog,
+            style: MessageStyle.TEMPLATE,
+            type,
+            success: false,
+            failDetail,
+        });
+        console.error("whatsapp template send failed", failDetail);
         return {
             success: false,
             status: 500,
-            message: axiosErrorPayload(error),
+            message: failDetail,
         };
     }
-}
+};
 
 export async function downloadWhatsAppMedia(mediaId: string): Promise<{
     buffer: Buffer;

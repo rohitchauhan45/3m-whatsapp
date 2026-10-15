@@ -21,6 +21,7 @@ import { attendence } from "../attendence/service";
 import { prisma } from "../../libraries/db";
 import { sendMessageOnWhatsapp, normalizeWhatsAppNumber } from "../../domains/whtsapp/sendWhatsApp";
 import { touchConversation } from "../../domains/conversation/service";
+import { applyWhatsAppStatusUpdate } from "../../domains/whtsapp/messageLog";
 import { notifyDashboardUpdate } from "../../libraries/realtime";
 import { notifyAdminError } from "../../libraries/util/notifyAdminError";
 
@@ -175,7 +176,11 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
     const user = await findUserByWhatsAppNumber(from);
 
     if (!user) {
-        await sendMessageOnWhatsapp({ number: from, message: "You are not user in this app please contact Admin or manager" })
+        await sendMessageOnWhatsapp({
+            number: from,
+            message: "You are not user in this app please contact Admin or manager",
+            type: "unauthorizedUser",
+        })
         return
     }
 
@@ -264,6 +269,27 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
     }
 }
 
+async function handleOutgoingStatuses(statuses: unknown): Promise<void> {
+    if (!Array.isArray(statuses)) return;
+
+    for (const item of statuses) {
+        if (!isRecord(item)) continue;
+
+        const id = typeof item.id === "string" ? item.id : "";
+        const status = typeof item.status === "string" ? item.status : "";
+        if (!id || !status) continue;
+
+        await applyWhatsAppStatusUpdate({
+            whatsappMessageId: id,
+            status,
+            timestamp: typeof item.timestamp === "string" || typeof item.timestamp === "number"
+                ? item.timestamp
+                : undefined,
+            errors: item.errors,
+        });
+    }
+}
+
 /** Meta WhatsApp webhook POST body. */
 export async function handleWebhook(body: unknown): Promise<void> {
     if (!isRecord(body) || !Array.isArray(body.entry)) {
@@ -279,6 +305,12 @@ export async function handleWebhook(body: unknown): Promise<void> {
             if (!isRecord(ch) || !isRecord(ch.value)) continue;
 
             const data = ch.value;
+
+            // Delivery receipts: sent / delivered / read / failed
+            if (Array.isArray(data.statuses)) {
+                await handleOutgoingStatuses(data.statuses);
+            }
+
             const messages = data.messages;
             if (!Array.isArray(messages)) continue;
 

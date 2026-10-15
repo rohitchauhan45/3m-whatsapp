@@ -88,6 +88,7 @@ export async function sendWelcomeMsg(): Promise<SendWelcomeMsgResult> {
             const result = await sendWhatsappTemplate({
                 number: phone,
                 tname: "welcome_3m",
+                type: "welcome",
                 parameters: [{ parameter_name: "user_name", text: person.name }],
             });
 

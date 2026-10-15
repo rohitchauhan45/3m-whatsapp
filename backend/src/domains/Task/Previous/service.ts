@@ -29,6 +29,7 @@ export async function sendPreviousTaskFollowupButtons(
     const result = await sendWhatsAppButtons({
         number,
         message: msg,
+        type: "previousTaskFollowUp",
         buttons: [
             { id: `hold_${task.id}`, title: "Hold" },
             { id: `blocked_${task.id}`, title: "Blocked" },
@@ -64,6 +65,7 @@ export const handlePendigTaskUpdateText = async (from: string) => {
             await sendMessageOnWhatsapp({
                 number: from,
                 message: "User not Found Please contact your Manager",
+                type: "userNotFound",
             });
             return false;
         }
@@ -99,6 +101,7 @@ export const handlePendigTaskUpdateText = async (from: string) => {
             await sendMessageOnWhatsapp({
                 number: from,
                 message: "✔️ No pending previous tasks to update.",
+                type: "previousTaskAck",
             });
             return true;
         }
@@ -247,21 +250,33 @@ export const handlePreviousTaskFollowupStatus = async (taskId: string, from: str
         const user = await findActiveTaskUserByWhatsAppNumber(from)
 
         if (!user) {
-            await sendMessageOnWhatsapp({ number: from, message: "user not Found , please contact Admin/Manager" })
+            await sendMessageOnWhatsapp({
+                number: from,
+                message: "user not Found , please contact Admin/Manager",
+                type: "userNotFound",
+            })
             return false
         }
 
         const task = await prisma.task.findFirst({ where: { id: taskId, status: { not: "deleted" } } })
 
         if (!task) {
-            await sendMessageOnWhatsapp({ number: from, message: "Task Not Found !" })
+            await sendMessageOnWhatsapp({
+                number: from,
+                message: "Task Not Found !",
+                type: "taskNotFound",
+            })
             return false
         }
 
         switch (choice) {
             case "blocked":
                 await prisma.task.update({ where: { id: taskId }, data: { finaldecision: TaskFinalStatus.blocked } })
-                await sendMessageOnWhatsapp({ number: from, message: "Thanks for updating the status on your previous task." })
+                await sendMessageOnWhatsapp({
+                    number: from,
+                    message: "Thanks for updating the status on your previous task.",
+                    type: "previousTaskAck",
+                })
                 break
 
             case "completed":
@@ -269,7 +284,11 @@ export const handlePreviousTaskFollowupStatus = async (taskId: string, from: str
                     where: { id: taskId },
                     data: { finaldecision: TaskFinalStatus.completed, completedAt: new Date() },
                 })
-                await sendMessageOnWhatsapp({ number: from, message: "Thanks for updating the status on your previous task." })
+                await sendMessageOnWhatsapp({
+                    number: from,
+                    message: "Thanks for updating the status on your previous task.",
+                    type: "previousTaskAck",
+                })
                 break
 
             case "hold":
@@ -277,6 +296,7 @@ export const handlePreviousTaskFollowupStatus = async (taskId: string, from: str
                 await sendMessageOnWhatsapp({
                     number: from,
                     message: "Got it. We will ask you again in 2 hours.",
+                    type: "previousTaskAck",
                 })
                 break
         }

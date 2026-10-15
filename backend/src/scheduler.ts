@@ -28,12 +28,15 @@ let followUpJob: CronJob | null = null;
 let hourlyFollowUpJobs: CronJob[] = [];
 let onTrackJob: CronJob | null = null;
 let endOfDaySummaryJob: CronJob | null = null;
+let managerReminderJob: CronJob | null = null;
 let remainingStatusTimeout: NodeJS.Timeout | null = null;
 
 const DEFAULT_ASSIGN_TIME = "0 21 * * *";
 const DEFAULT_ONTRACK_TIME = "0 7 * * *";
 /** Daily end-of-day summary for managers and admin at 10:00 PM IST. */
 const END_OF_DAY_SUMMARY_CRON = "0 22 * * *";
+/** Manager WhatsApp window reminder — once daily at 12:00 AM IST (not every minute). */
+const MANAGER_REMINDER_CRON = "0 7 * * *";
 /** Every minute between 8:00 AM and 9:59 PM IST (off overnight to reduce load). */
 const FOLLOWUP_CRON_SCHEDULE = "* 8-21 * * *";
 
@@ -228,15 +231,23 @@ async function runFollowUpForAll() {
         const holdReminderResult = await sendPreviousTaskHoldReminders();
         logger.info(`cron previous-task hold reminders done: ${holdReminderResult.message}`);
 
-        const managerReminderResult = await sendManagerWindowReminders();
-        logger.info(
-            `cron manager window reminders done: sent=${managerReminderResult.sent} failed=${managerReminderResult.failed} skipped=${managerReminderResult.skipped}`,
-        );
-
         notifyDashboardUpdate();
     } catch (err) {
         logger.error("cron start/follow-up failed", err);
         await notifyAdminError("cron start/follow-up");
+    }
+}
+
+async function runManagerWindowReminders() {
+    logger.info("cron Starting manager window reminders");
+    try {
+        const result = await sendManagerWindowReminders();
+        logger.info(
+            `cron manager window reminders done: sent=${result.sent} failed=${result.failed} skipped=${result.skipped}`,
+        );
+    } catch (err) {
+        logger.error("cron manager window reminders failed", err);
+        await notifyAdminError("cron manager window reminders");
     }
 }
 
@@ -253,6 +264,7 @@ export async function readCronjob() {
     hourlyFollowUpJobs = [];
     if (onTrackJob) { onTrackJob.stop(); onTrackJob = null; }
     if (endOfDaySummaryJob) { endOfDaySummaryJob.stop(); endOfDaySummaryJob = null; }
+    if (managerReminderJob) { managerReminderJob.stop(); managerReminderJob = null; }
     if (remainingStatusTimeout) { clearTimeout(remainingStatusTimeout); remainingStatusTimeout = null; }
 
     let assignTime = DEFAULT_ASSIGN_TIME;
@@ -305,4 +317,8 @@ export async function readCronjob() {
     endOfDaySummaryJob = new CronJob(END_OF_DAY_SUMMARY_CRON, runEndOfDaySummary, null, true, "Asia/Kolkata");
     endOfDaySummaryJob.start();
     logger.info(`cron End-of-day summary scheduled: ${END_OF_DAY_SUMMARY_CRON} IST`);
+
+    managerReminderJob = new CronJob(MANAGER_REMINDER_CRON, runManagerWindowReminders, null, true, "Asia/Kolkata");
+    managerReminderJob.start();
+    logger.info(`cron Manager window reminder scheduled daily at midnight IST (${MANAGER_REMINDER_CRON})`);
 }

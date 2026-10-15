@@ -12,6 +12,12 @@ import {
     type UserStatusFilter,
     type TaskTableStatusFilter,
 } from "./service";
+import {
+    conversationMessages,
+    conversationTable,
+    messageCardDetails,
+    type ConversationStatusFilter,
+} from "./messages";
 
 const TIME_RANGES: PresetTimeRange[] = [
     "today",
@@ -67,6 +73,20 @@ function parseUserStatusFilter(raw: unknown): UserStatusFilter | undefined {
         "Validation error",
         "Invalid status. Use: all, accept, remaining, decline",
         400
+    );
+}
+
+function parseConversationStatusFilter(raw: unknown): ConversationStatusFilter | undefined {
+    if (typeof raw !== "string" || !raw.trim()) return undefined;
+    const value = raw.trim().toLowerCase();
+    if (value === "all") return "all";
+    if (value === "open") return "open";
+    if (value === "expired") return "expired";
+    if (value === "failed") return "failed";
+    throw new AppError(
+        "Validation error",
+        "Invalid status. Use: all, open, expired, failed",
+        400,
     );
 }
 
@@ -136,6 +156,59 @@ export const routes = (): Router => {
                     { page, limit, search, status },
                     parseTimeRange(req.query.time)
                 );
+                return res.status(200).json({ success: true, status: 200, ...result });
+            } catch (error) {
+                next(error);
+            }
+        },
+    );
+
+    router.get(
+        "/message-cards",
+        authenticateToken,
+        requireAdmin,
+        async (_req: Request, res: Response, next: NextFunction) => {
+            try {
+                const result = await messageCardDetails();
+                return res.status(result.status).json(result);
+            } catch (error) {
+                next(error);
+            }
+        },
+    );
+
+    router.get(
+        "/message-table",
+        authenticateToken,
+        requireAdmin,
+        async (req: Request, res: Response, next: NextFunction) => {
+            try {
+                const page = req.query.page ? Number(req.query.page) : 1;
+                const limit = req.query.limit ? Number(req.query.limit) : 10;
+                const search = typeof req.query.search === "string" ? req.query.search : undefined;
+                const status = parseConversationStatusFilter(req.query.status);
+                const result = await conversationTable({ page, limit, search, status });
+                return res.status(200).json({ success: true, status: 200, ...result });
+            } catch (error) {
+                next(error);
+            }
+        },
+    );
+
+    router.get(
+        "/conversations/:id/messages",
+        authenticateToken,
+        requireAdmin,
+        async (req: Request, res: Response, next: NextFunction) => {
+            try {
+                const page = req.query.page ? Number(req.query.page) : 1;
+                const limit = req.query.limit ? Number(req.query.limit) : 10;
+                const search = typeof req.query.search === "string" ? req.query.search : undefined;
+                const result = await conversationMessages(req.params.id, {
+                    page,
+                    limit,
+                    search,
+                });
                 return res.status(200).json({ success: true, status: 200, ...result });
             } catch (error) {
                 next(error);

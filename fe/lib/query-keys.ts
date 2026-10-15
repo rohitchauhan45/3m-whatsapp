@@ -13,6 +13,11 @@ export const queryKeys = {
     userCards: (time: TimeRange) => ['dashboard', 'user-cards', time] as const,
     userTable: (params: Record<string, unknown>) =>
       ['dashboard', 'user-table', params] as const,
+    messageCards: ['dashboard', 'message-cards'] as const,
+    messageTable: (params: Record<string, unknown>) =>
+      ['dashboard', 'message-table', params] as const,
+    conversationMessages: (conversationId: string, params: Record<string, unknown>) =>
+      ['dashboard', 'conversation-messages', conversationId, params] as const,
   },
   sites: ['sites'] as const,
   siteDetail: (siteId: string) => ['sites', siteId] as const,

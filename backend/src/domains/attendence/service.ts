@@ -53,6 +53,7 @@ export const sendPunchInButton = async () => {
             const result = await sendWhatsAppButtons({
                 number,
                 message: "Please punch in before starting task ",
+                type: "attendancePunchIn",
                 buttons: [{ title: "Punch in", id: `punchin_${user.id}` }],
             });
 
@@ -94,6 +95,7 @@ export const attendence = async (from: string, lat: number, long: number) => {
             await sendMessageOnWhatsapp({
                 number: from,
                 message: "User not found. Please contact your manager.",
+                type: "userNotFound",
             });
             return;
         }
@@ -115,7 +117,11 @@ export const attendence = async (from: string, lat: number, long: number) => {
         })
 
         if (isalreadyAttend) {
-            await sendMessageOnWhatsapp({ number: from, message: "Already puch-in !" })
+            await sendMessageOnWhatsapp({
+                number: from,
+                message: "Already puch-in !",
+                type: "attendanceAlreadyPunchIn",
+            })
             return
         }
 
@@ -141,6 +147,7 @@ export const attendence = async (from: string, lat: number, long: number) => {
             await sendMessageOnWhatsapp({
                 number: from,
                 message: "Thank you for being with us.",
+                type: "attendancePunchIn",
             });
             return;
         }
@@ -148,6 +155,7 @@ export const attendence = async (from: string, lat: number, long: number) => {
         await sendMessageOnWhatsapp({
             number: from,
             message: "You are not in your work area. Please go there and try again.",
+            type: "attendancePunchIn",
         });
     } catch (error: any) {
         logger.error("Error in handle attendence ", error);

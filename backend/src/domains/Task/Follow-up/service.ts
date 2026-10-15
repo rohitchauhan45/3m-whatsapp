@@ -171,6 +171,7 @@ export const sendStartTask = async (
                             rawStartTime: task.rawStartTime,
                             rawEndTime: task.rawEndTime,
                         }),
+                        type: "startTask",
                         buttons: [
                             { title: "On Track", id: `start_${task.id}` },
                             { title: "Remark", id: `taskquery_${task.id}` },
@@ -186,6 +187,7 @@ export const sendStartTask = async (
                             rawStartTime: task.rawStartTime,
                             rawEndTime: task.rawEndTime,
                         }),
+                        type: "startTask",
                         buttons: [
                             { title: "in Progress", id: `start_${task.id}` },
                             { title: "Delay", id: `delay_${task.id}` },
@@ -249,6 +251,7 @@ export const sendStartTask = async (
                 const mgrResult = await sendMessageOnWhatsapp({
                     number: managerPhone,
                     message: summaryBody,
+                    type: "remainingStatusToManager",
                 });
                 if (mgrResult.success) {
                     managerSummarySent = true;
@@ -286,6 +289,7 @@ export const handleStarttaskStatus = async (taskId: string, whatsappFrom: string
             await sendMessageOnWhatsapp({
                 number: whatsappFrom,
                 message: "No user found. Please contact your manager.",
+                type: "userNotFound",
             });
             return;
         }
@@ -295,7 +299,7 @@ export const handleStarttaskStatus = async (taskId: string, whatsappFrom: string
         });
 
         if (!task) {
-            await sendMessageOnWhatsapp({ number: user.number, message: "Task not found." });
+            await sendMessageOnWhatsapp({ number: user.number, message: "Task not found.", type: "taskNotFound"});
             return;
         }
 
@@ -310,6 +314,7 @@ export const handleStarttaskStatus = async (taskId: string, whatsappFrom: string
                 number: user.number,
                 message:
                     "Thanks for update !",
+                    type: "startTaskAck",
             });
 
             if (task.position > 1) {
@@ -328,6 +333,7 @@ export const handleStarttaskStatus = async (taskId: string, whatsappFrom: string
             await sendMessageOnWhatsapp({
                 number: user.number,
                 message: reasonMessage("remark", user.name),
+                type: "followUpAskRemark",
             });
             return;
         }
@@ -344,7 +350,7 @@ export const handleStarttaskStatus = async (taskId: string, whatsappFrom: string
                 if (first) pendingStartTaskDelayTimeByUserId.delete(first)
             }
 
-            await sendMessageOnWhatsapp({ number: user.number, message: "⏱️ How long will it take you to start the task? (ex. 10min ,1hour ,24m)" })
+            await sendMessageOnWhatsapp({ number: user.number, message: "⏱️ How long will it take you to start the task? (ex. 10min ,1hour ,24m)", type: "startTaskDelayAsk"})
         }
 
     } catch (error) {
@@ -368,6 +374,7 @@ export const handleStartTaskDelayTime = async (from: string, time: string) => {
             await sendMessageOnWhatsapp({
                 number: from,
                 message: "Invalid time. Please send again (e.g. 1hour, 30min, 1kalak).",
+                type: "invalidChoice",
             });
             return true;
         }
@@ -395,7 +402,7 @@ export const handleStartTaskDelayTime = async (from: string, time: string) => {
         });
 
         if (!currentTask) {
-            await sendMessageOnWhatsapp({ number: from, message: "Task not found." });
+            await sendMessageOnWhatsapp({ number: from, message: "Task not found.", type: "taskNotFound"});
             pendingStartTaskDelayTimeByUserId.delete(user.id);
             return true;
         }
@@ -408,7 +415,7 @@ export const handleStartTaskDelayTime = async (from: string, time: string) => {
         const newRawStartTime = shiftRawTimeByMinutes(taskDate, currentTask.rawStartTime, resultTime)
 
         if (!newRawEndTime) {
-            await sendMessageOnWhatsapp({ number: from, message: "Could not update task time. Please try again." });
+            await sendMessageOnWhatsapp({ number: from, message: "Could not update task time. Please try again.", type: "updateFailed"});
             return true;
         }
 
@@ -463,7 +470,7 @@ export const handleStartTaskDelayTime = async (from: string, time: string) => {
             }
         });
 
-        await sendMessageOnWhatsapp({ number: user.number, message: "please start the task ASAP" })
+        await sendMessageOnWhatsapp({ number: user.number, message: "please start the task ASAP", type: "startTaskAck"})
         pendingStartTaskDelayTimeByUserId.delete(user.id);
 
         if (currentTask.position > 1) {
@@ -489,6 +496,7 @@ export const handleStartTaskDelayTime = async (from: string, time: string) => {
             const mgrResult = await sendMessageOnWhatsapp({
                 number: managerPhone,
                 message: msg,
+                type: "followUpToManager",
             });
             if (!mgrResult.success) {
                 logger.warn(
@@ -566,6 +574,7 @@ export const sendTaskFollowUp = async (taskIds: string[], mode: "hourly" | "endt
             const result = await sendWhatsAppButtons({
                 number: phone,
                 message: userFollowUpTaskMessage(task),
+                type: "taskFollowUp",
                 buttons: [
                     { title: "in Progress", id: `${mode === "hourly" ? "inphourly" : "inpendtime"}_${task.id}` },
                     { title: "Remark", id: `remark_${task.id}` },
@@ -619,6 +628,7 @@ export const sendTaskFollowUp = async (taskIds: string[], mode: "hourly" | "endt
             const mgrResult = await sendMessageOnWhatsapp({
                 number: managerPhone,
                 message: failBody,
+                type: "followUpToManager",
             });
 
             if (mgrResult.success) {
@@ -656,6 +666,7 @@ export const handleFollowUp = async (taskId: string, whatsappFrom: string, ch: c
             await sendMessageOnWhatsapp({
                 number: whatsappFrom,
                 message: "No user found. Please contact your manager.",
+                type: "userNotFound",
             });
             return;
         }
@@ -665,14 +676,14 @@ export const handleFollowUp = async (taskId: string, whatsappFrom: string, ch: c
         });
 
         if (!task) {
-            await sendMessageOnWhatsapp({ number: user.number, message: "Task not found." });
+            await sendMessageOnWhatsapp({ number: user.number, message: "Task not found.", type: "taskNotFound"});
             return;
         }
 
         const choice = normalizeChoiceforTaskfollowUp(ch);
 
         if (!choice) {
-            await sendMessageOnWhatsapp({ number: user.number, message: "Invalid choice for the task." });
+            await sendMessageOnWhatsapp({ number: user.number, message: "Invalid choice for the task.", type: "invalidChoice"});
             return;
         }
 
@@ -690,6 +701,7 @@ export const handleFollowUp = async (taskId: string, whatsappFrom: string, ch: c
                 number: user.number,
                 message:
                     "Please tell how much of the task is complete (e.g. 50%, 85%, 10 feet, 5 meter, etc.)",
+                    type: "followUpAskRemark",
             });
             return;
         }
@@ -703,6 +715,7 @@ export const handleFollowUp = async (taskId: string, whatsappFrom: string, ch: c
             await sendMessageOnWhatsapp({
                 number: user.number,
                 message: reasonMessage("remark", user.name),
+                type: "followUpAskRemark",
             });
             return;
         }
@@ -718,6 +731,7 @@ export const handleFollowUp = async (taskId: string, whatsappFrom: string, ch: c
             await sendMessageOnWhatsapp({
                 number: user.number,
                 message: "Thank you! Task marked as done.",
+                type: "followUpAck",
             });
 
             await sendWhatsAppButtons({
@@ -726,7 +740,8 @@ export const handleFollowUp = async (taskId: string, whatsappFrom: string, ch: c
                 buttons: [
                     { title: "Yes", id: `cpyes_${taskId}` },
                     { title: "No", id: `cpno_${taskId}` }
-                ]
+                ],
+                type: "photoUploadAsk",
             })
 
             if (task.position > 1) {
@@ -795,6 +810,7 @@ export const handleFollowUpReply = async (whatsappFrom: string, text: string): P
             await sendMessageOnWhatsapp({
                 number: phone,
                 message: "Thank you! Remark reason saved.",
+                type: "followUpAck",
             });
 
             await sendWhatsAppButtons({
@@ -803,7 +819,8 @@ export const handleFollowUpReply = async (whatsappFrom: string, text: string): P
                 buttons: [
                     { title: "Yes", id: `rpyes_${pending.taskId}` },
                     { title: "No", id: `rpno_${pending.taskId}` }
-                ]
+                ],
+                type: "photoUploadAsk",
             })
 
             if (task.position > 1) {
@@ -826,6 +843,7 @@ export const handleFollowUpReply = async (whatsappFrom: string, text: string): P
                     const mgrResult = await sendMessageOnWhatsapp({
                         number: managerPhone,
                         message: msg,
+                        type: "followUpToManager",
                     });
                     if (!mgrResult.success) {
                         logger.warn(
@@ -857,6 +875,7 @@ export const handleInProgressTask = async (taskId: string, phone: string, answer
         message: mode === "endtime"
             ? "How much more time do you need to complete this task? (e.g. 1hour, 1.5hour, 1kalak, 10min, 2kalak)"
             : "Thanks for update !",
+            type: "followUpAskRemark",
     });
 };
 
@@ -867,6 +886,7 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
             await sendMessageOnWhatsapp({
                 number: from,
                 message: "Invalid time. Please send again (e.g. 1hour, 30min, 1kalak).",
+                type: "invalidChoice",
             });
             return false;
         }
@@ -893,7 +913,7 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
         });
 
         if (!currentTask) {
-            await sendMessageOnWhatsapp({ number: from, message: "Task not found." });
+            await sendMessageOnWhatsapp({ number: from, message: "Task not found.", type: "taskNotFound"});
             return false;
         }
 
@@ -901,7 +921,7 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
         const taskDate = currentTask.dailyTask.date;
         const newRawEndTime = shiftRawTimeByMinutes(taskDate, currentTask.rawEndTime, resultTime);
         if (!newRawEndTime) {
-            await sendMessageOnWhatsapp({ number: from, message: "Could not update task time. Please try again." });
+            await sendMessageOnWhatsapp({ number: from, message: "Could not update task time. Please try again.", type: "updateFailed"});
             return false;
         }
 
@@ -956,6 +976,7 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
         await sendMessageOnWhatsapp({
             number: from,
             message: "Thank you! Extra time saved.",
+            type: "followUpAck",
         });
 
         const manager = currentTask.user.parent;
@@ -976,6 +997,7 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
             const mgrResult = await sendMessageOnWhatsapp({
                 number: managerPhone,
                 message: msg,
+                type: "startTaskDelayToManager",
             });
             if (!mgrResult.success) {
                 logger.warn(
@@ -991,6 +1013,7 @@ const handleExtratime = async (id: string, from: string, etime: string): Promise
         await sendMessageOnWhatsapp({
             number: from,
             message: "Could not save extra time. Please try again.",
+            type: "updateFailed",
         });
         return false;
     }
@@ -1010,12 +1033,12 @@ export async function handlePhotoUploadChoice(
     });
 
     if (!task) {
-        await sendMessageOnWhatsapp({ number: user.number, message: "Task not found." });
+        await sendMessageOnWhatsapp({ number: user.number, message: "Task not found.", type: "taskNotFound"});
         return;
     }
 
     if (choice === "no") {
-        await sendMessageOnWhatsapp({ number: user.number, message: PHOTO_UPLOAD_NO_MESSAGE });
+        await sendMessageOnWhatsapp({ number: user.number, message: PHOTO_UPLOAD_NO_MESSAGE, type: "photoUploadAck"});
         return;
     }
 
@@ -1023,6 +1046,7 @@ export async function handlePhotoUploadChoice(
     await sendMessageOnWhatsapp({
         number: user.number,
         message: "Please send photo now.",
+        type: "photoUploadAsk",
     });
 }
 
@@ -1042,6 +1066,7 @@ export async function handleIncomingTaskPhoto(
         await sendMessageOnWhatsapp({
             number: user.number,
             message: "Could not download photo. Please try again.",
+            type: "photoUploadAck",
         });
         return false;
     }
@@ -1094,6 +1119,7 @@ export const handlephoto = async (
         await sendMessageOnWhatsapp({
             number: user.number,
             message: "Photo saved. Thank you!",
+            type: "photoUploadAck",
         });
 
         return true;
@@ -1103,6 +1129,7 @@ export const handlephoto = async (
         await sendMessageOnWhatsapp({
             number: from,
             message: "Could not save photo. Please try again.",
+            type: "photoUploadAck",
         });
         return false;
     }

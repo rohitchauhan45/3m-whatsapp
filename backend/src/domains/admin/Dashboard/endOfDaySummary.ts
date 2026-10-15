@@ -56,7 +56,11 @@ export async function sendEndOfDaySummaries(): Promise<EndOfDaySummaryResult> {
                 taskCards.data,
             );
 
-            const result = await sendMessageOnWhatsapp({ number: phone, message });
+            const result = await sendMessageOnWhatsapp({
+                number: phone,
+                message,
+                type: "taskreportSummary",
+            });
             if (result.success) {
                 managersSent += 1;
                 logger.info(`end-of-day summary sent manager=${phone}`);
@@ -77,7 +81,7 @@ export async function sendEndOfDaySummaries(): Promise<EndOfDaySummaryResult> {
             allUserCards.data,
             allTaskCards.data,
         );
-        await notifyAdminMessage(adminMessage);
+        await notifyAdminMessage(adminMessage, "taskreportSummary");
         adminSent = true;
         logger.info("end-of-day summary sent to admin");
     } catch (error) {

@@ -11,6 +11,7 @@ export async function handleMenuText(number: string): Promise<void> {
         await sendWhatsAppButtons({
             number,
             message: MENU_MESSAGE,
+            type: "menu",
             buttons: [
                 { id: "menu_morning", title: "Morning on track" },
                 { id: "menu_update", title: "Update" },
