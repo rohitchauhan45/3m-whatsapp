@@ -89,7 +89,7 @@ export interface TaskTableUserTask {
   howmuchComplete: string | null;
   actualTime: string | null;
   totalTime: string | null;
-  sent: boolean;
+  deliveryStatus: string | null;
   sendAt: string | null;
   completedAt: string | null;
   date: string;
@@ -111,7 +111,7 @@ export interface DashboardDailyTask {
   finaldecision: string | null;
   remarkReason: string | null;
   absentReason: string | null;
-  sent: boolean;
+  deliveryStatus: string | null;
   date: string;
   user?: { name: string; number: string };
 }

@@ -25,11 +25,11 @@ const USER_STATUS_CLASSES: Record<string, string> = {
 
 export function getUserStatusClassName(
   status: string | null | undefined,
-  sent?: boolean | null,
+  deliveryStatus?: string | null,
 ): string {
   const displayStatus = status || 'remaining';
-  if (displayStatus === 'remaining' && sent !== undefined) {
-    return sent ? 'text-red-600' : 'text-gray-500';
+  if (displayStatus === 'remaining' && deliveryStatus !== undefined) {
+    return deliveryStatus ? 'text-red-600' : 'text-gray-500';
   }
   return USER_STATUS_CLASSES[displayStatus] ?? 'text-gray-600';
 }
@@ -48,6 +48,27 @@ export function getOnTrackStatusClassName(status: string | null | undefined): st
 
 export function getSentClassName(sent: boolean): string {
   return sent ? 'text-green-600' : 'text-red-600';
+}
+
+/** Color for WhatsApp deliveryStatus on DailyTask / Task. */
+export function getDeliveryStatusClassName(status: string | null | undefined): string {
+  if (!status) return 'text-red-600';
+  const upper = status.toUpperCase();
+  if (upper === 'FAILED') return 'text-red-600';
+  if (upper === 'READ') return 'text-green-600';
+  if (upper === 'DELIVERED') return 'text-brand-primary';
+  if (upper === 'SENT') return 'text-gray-700';
+  if (upper === 'PENDING') return 'text-amber-600';
+  return 'text-gray-600';
+}
+
+export function formatDeliveryStatusLabel(status: string | null | undefined): string {
+  if (!status) return 'not send';
+  return status.toLowerCase();
+}
+
+export function isDeliveryAttempted(status: string | null | undefined): boolean {
+  return status != null && status !== '';
 }
 
 const PROJECT_TASK_STATUS_TEXT_CLASSES: Record<string, string> = {

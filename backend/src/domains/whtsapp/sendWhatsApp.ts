@@ -21,14 +21,20 @@ interface whatsappButton {
     id: string;
 }
 
-interface whatsappmessagePayload {
+/** Optional first-message link — only pass when DailyTask/Task.deliveryStatus is still null. */
+type FirstMessageLink = {
+    dailyTaskId?: string;
+    taskId?: string;
+};
+
+interface whatsappmessagePayload extends FirstMessageLink {
     number: string;
     message: string;
     /** Required business type string, e.g. "assignTask" — saved on Message.type. */
     type: string;
 }
 
-interface SendWhatsAppButtonPayload {
+interface SendWhatsAppButtonPayload extends FirstMessageLink {
     number: string;
     message: string;
     buttons: whatsappButton[];
@@ -41,7 +47,7 @@ interface WhatsAppTemplateBodyParameter {
     text: string;
 }
 
-interface whatsappTemplatepayload {
+interface whatsappTemplatepayload extends FirstMessageLink {
     tname: string;
     number: string;
     parameters?: WhatsAppTemplateBodyParameter[];
@@ -97,6 +103,8 @@ async function logSendResult(opts: {
     success: boolean;
     whatsappMessageId?: string;
     failDetail?: string;
+    dailyTaskId?: string;
+    taskId?: string;
 }): Promise<void> {
     if (opts.success) {
         await saveOutgoingMessage({
@@ -106,6 +114,8 @@ async function logSendResult(opts: {
             type: opts.type,
             whatsappMessageId: opts.whatsappMessageId ?? null,
             status: messageStatus.SENT,
+            dailyTaskId: opts.dailyTaskId,
+            taskId: opts.taskId,
         });
         return;
     }
@@ -122,11 +132,14 @@ async function logSendResult(opts: {
         errorTitle: parsed.errorTitle,
         errorDetails: parsed.errorDetails,
         errorPayload: opts.failDetail ? opts.failDetail : null,
+        // Stamp FAILED on first message so cron does not retry Meta rejects.
+        dailyTaskId: opts.dailyTaskId,
+        taskId: opts.taskId,
     });
 }
 
 export const sendMessageOnWhatsapp = async (data: whatsappmessagePayload) => {
-    const { number, message, type } = data;
+    const { number, message, type, dailyTaskId, taskId } = data;
 
     const to = normalizeWhatsAppNumber(number);
     if (!to) {
@@ -173,6 +186,8 @@ export const sendMessageOnWhatsapp = async (data: whatsappmessagePayload) => {
                     type,
                     success: true,
                     whatsappMessageId: id,
+                    dailyTaskId,
+                    taskId,
                 });
                 return { success: true, status: 200, message: id };
             }
@@ -184,7 +199,9 @@ export const sendMessageOnWhatsapp = async (data: whatsappmessagePayload) => {
                 type,
                 success: false,
                 failDetail,
-            });
+                    dailyTaskId,
+                    taskId,
+                });
             return {
                 success: false,
                 status: response.status,
@@ -200,7 +217,9 @@ export const sendMessageOnWhatsapp = async (data: whatsappmessagePayload) => {
             type,
             success: false,
             failDetail,
-        });
+                    dailyTaskId,
+                    taskId,
+                });
         return {
             success: false,
             status: response.status,
@@ -215,7 +234,9 @@ export const sendMessageOnWhatsapp = async (data: whatsappmessagePayload) => {
             type,
             success: false,
             failDetail,
-        });
+                    dailyTaskId,
+                    taskId,
+                });
         console.error("WhatsApp send failed:", failDetail);
         return {
             success: false,
@@ -226,7 +247,7 @@ export const sendMessageOnWhatsapp = async (data: whatsappmessagePayload) => {
 };
 
 export const sendWhatsAppButtons = async (data: SendWhatsAppButtonPayload) => {
-    const { number, message, buttons, type } = data;
+    const { number, message, buttons, type, dailyTaskId, taskId } = data;
 
     const to = normalizeWhatsAppNumber(number);
     if (!to) {
@@ -297,6 +318,8 @@ export const sendWhatsAppButtons = async (data: SendWhatsAppButtonPayload) => {
                     type,
                     success: true,
                     whatsappMessageId: id,
+                    dailyTaskId,
+                    taskId,
                 });
                 return { success: true, status: 200, message: id };
             }
@@ -308,7 +331,9 @@ export const sendWhatsAppButtons = async (data: SendWhatsAppButtonPayload) => {
                 type,
                 success: false,
                 failDetail,
-            });
+                    dailyTaskId,
+                    taskId,
+                });
             return {
                 success: false,
                 status: response.status,
@@ -324,7 +349,9 @@ export const sendWhatsAppButtons = async (data: SendWhatsAppButtonPayload) => {
             type,
             success: false,
             failDetail,
-        });
+                    dailyTaskId,
+                    taskId,
+                });
         return {
             success: false,
             status: response.status,
@@ -339,7 +366,9 @@ export const sendWhatsAppButtons = async (data: SendWhatsAppButtonPayload) => {
             type,
             success: false,
             failDetail,
-        });
+                    dailyTaskId,
+                    taskId,
+                });
         console.error("WhatsApp interactive send failed:", failDetail);
         return {
             success: false,
@@ -350,7 +379,7 @@ export const sendWhatsAppButtons = async (data: SendWhatsAppButtonPayload) => {
 };
 
 export const sendWhatsappTemplate = async (data: whatsappTemplatepayload) => {
-    const { number, tname, parameters = [], buttons, type } = data;
+    const { number, tname, parameters = [], buttons, type, dailyTaskId, taskId } = data;
 
     const to = normalizeWhatsAppNumber(number);
     if (!to) {
@@ -450,6 +479,8 @@ export const sendWhatsappTemplate = async (data: whatsappTemplatepayload) => {
                     type,
                     success: true,
                     whatsappMessageId: id,
+                    dailyTaskId,
+                    taskId,
                 });
                 return { success: true, status: 200, message: id };
             }
@@ -461,7 +492,9 @@ export const sendWhatsappTemplate = async (data: whatsappTemplatepayload) => {
                 type,
                 success: false,
                 failDetail,
-            });
+                    dailyTaskId,
+                    taskId,
+                });
             return {
                 success: false,
                 status: response.status,
@@ -477,7 +510,9 @@ export const sendWhatsappTemplate = async (data: whatsappTemplatepayload) => {
             type,
             success: false,
             failDetail,
-        });
+                    dailyTaskId,
+                    taskId,
+                });
         return {
             success: false,
             status: response.status,
@@ -492,7 +527,9 @@ export const sendWhatsappTemplate = async (data: whatsappTemplatepayload) => {
             type,
             success: false,
             failDetail,
-        });
+                    dailyTaskId,
+                    taskId,
+                });
         console.error("whatsapp template send failed", failDetail);
         return {
             success: false,

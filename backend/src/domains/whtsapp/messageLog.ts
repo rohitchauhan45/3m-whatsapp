@@ -5,8 +5,17 @@ import {
 } from "@prisma/client";
 import { prisma } from "../../libraries/db";
 import logger from "../../libraries/log/logger";
+import { notifyAdminWhatsAppFailure } from "../../libraries/util/notifyAdminError";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+const STATUS_RANK: Record<messageStatus, number> = {
+    PENDING: 0,
+    SENT: 1,
+    DELIVERED: 2,
+    READ: 3,
+    FAILED: 4,
+};
 
 function normalizeWhatsAppNumber(raw: string): string {
     return raw.replace(/\D/g, "");
@@ -20,6 +29,10 @@ export type SaveOutgoingMessageInput = {
     type: string;
     whatsappMessageId?: string | null;
     status: messageStatus;
+    /** Only for the first outbound message of that DailyTask. */
+    dailyTaskId?: string | null;
+    /** Only for the first outbound message of that Task. */
+    taskId?: string | null;
     errorCode?: string | null;
     errorTitle?: string | null;
     errorDetails?: string | null;
@@ -52,6 +65,83 @@ export async function upsertConversation(userId: string, number: string) {
     });
 }
 
+/**
+ * Stamp deliveryStatus on DailyTask / Task only when still null (first message).
+ * Later webhook updates go through syncDeliveryStatusFromMessage.
+ */
+async function stampFirstDeliveryStatus(opts: {
+    dailyTaskId?: string | null;
+    taskId?: string | null;
+    status: messageStatus;
+    at: Date;
+}): Promise<{ dailyTaskId: string | null; taskId: string | null }> {
+    let linkedDailyTaskId: string | null = null;
+    let linkedTaskId: string | null = null;
+
+    if (opts.dailyTaskId) {
+        const updated = await prisma.dailyTask.updateMany({
+            where: { id: opts.dailyTaskId, deliveryStatus: null },
+            data: {
+                deliveryStatus: opts.status,
+                sendAt: opts.status === messageStatus.FAILED ? null : opts.at,
+            },
+        });
+        if (updated.count > 0) linkedDailyTaskId = opts.dailyTaskId;
+    }
+
+    if (opts.taskId) {
+        const updated = await prisma.task.updateMany({
+            where: { id: opts.taskId, deliveryStatus: null },
+            data: {
+                deliveryStatus: opts.status,
+                sendAt: opts.status === messageStatus.FAILED ? null : opts.at,
+            },
+        });
+        if (updated.count > 0) linkedTaskId = opts.taskId;
+    }
+
+    return { dailyTaskId: linkedDailyTaskId, taskId: linkedTaskId };
+}
+
+/** Propagate Message status → DailyTask/Task.deliveryStatus (first-message link only). */
+async function syncDeliveryStatusFromMessage(opts: {
+    dailyTaskId: string | null;
+    taskId: string | null;
+    status: messageStatus;
+    at: Date;
+}): Promise<void> {
+    const data: Prisma.DailyTaskUpdateManyMutationInput = {
+        deliveryStatus: opts.status,
+    };
+    if (
+        opts.status === messageStatus.SENT ||
+        opts.status === messageStatus.DELIVERED ||
+        opts.status === messageStatus.READ
+    ) {
+        data.sendAt = opts.at;
+    }
+
+    if (opts.dailyTaskId) {
+        await prisma.dailyTask.updateMany({
+            where: { id: opts.dailyTaskId },
+            data,
+        });
+    }
+    if (opts.taskId) {
+        await prisma.task.updateMany({
+            where: { id: opts.taskId },
+            data: {
+                deliveryStatus: opts.status,
+                ...(opts.status === messageStatus.SENT ||
+                opts.status === messageStatus.DELIVERED ||
+                opts.status === messageStatus.READ
+                    ? { sendAt: opts.at }
+                    : {}),
+            },
+        });
+    }
+}
+
 /** Save outgoing message + update conversation last-sent fields. Never throws. */
 export async function saveOutgoingMessage(
     input: SaveOutgoingMessageInput,
@@ -69,9 +159,22 @@ export async function saveOutgoingMessage(
         const now = new Date();
         const body = input.body ?? "";
 
+        // Stamp deliveryStatus on first attempt (incl. FAILED) so cron does not retry Meta rejects.
+        const linked =
+            input.dailyTaskId || input.taskId
+                ? await stampFirstDeliveryStatus({
+                      dailyTaskId: input.dailyTaskId,
+                      taskId: input.taskId,
+                      status: input.status,
+                      at: now,
+                  })
+                : { dailyTaskId: null, taskId: null };
+
         const message = await prisma.message.create({
             data: {
                 conversationId: conversation.id,
+                dailyTaskId: linked.dailyTaskId,
+                taskId: linked.taskId,
                 style: input.style,
                 type: input.type,
                 body,
@@ -99,6 +202,21 @@ export async function saveOutgoingMessage(
                 lastSentMessageStatus: input.status,
             },
         });
+
+        if (
+            input.status === messageStatus.FAILED &&
+            (linked.dailyTaskId || linked.taskId)
+        ) {
+            await notifyAdminWhatsAppFailure({
+                type: input.type,
+                number: input.number,
+                errorCode: input.errorCode,
+                errorTitle: input.errorTitle,
+                errorDetails: input.errorDetails,
+                dailyTaskId: linked.dailyTaskId,
+                taskId: linked.taskId,
+            });
+        }
 
         return { messageId: message.id, conversationId: conversation.id };
     } catch (err) {
@@ -141,21 +259,20 @@ export async function applyWhatsAppStatusUpdate(input: {
 
         const existing = await prisma.message.findUnique({
             where: { whatsappMessageId: wamid },
-            select: { id: true, conversationId: true, status: true },
+            select: {
+                id: true,
+                conversationId: true,
+                status: true,
+                dailyTaskId: true,
+                taskId: true,
+            },
         });
         if (!existing) return;
 
-        const rank: Record<messageStatus, number> = {
-            PENDING: 0,
-            SENT: 1,
-            DELIVERED: 2,
-            READ: 3,
-            FAILED: 4,
-        };
         if (
             existing.status !== messageStatus.FAILED &&
             mapped !== messageStatus.FAILED &&
-            rank[mapped] < rank[existing.status]
+            STATUS_RANK[mapped] < STATUS_RANK[existing.status]
         ) {
             return;
         }
@@ -214,6 +331,43 @@ export async function applyWhatsAppStatusUpdate(input: {
             await prisma.whatsAppConversation.update({
                 where: { id: existing.conversationId },
                 data: { lastSentMessageStatus: mapped },
+            });
+        }
+
+        // Only first-message links propagate to DailyTask / Task.
+        if (existing.dailyTaskId || existing.taskId) {
+            await syncDeliveryStatusFromMessage({
+                dailyTaskId: existing.dailyTaskId,
+                taskId: existing.taskId,
+                status: mapped,
+                at,
+            });
+        }
+
+        if (
+            mapped === messageStatus.FAILED &&
+            existing.status !== messageStatus.FAILED &&
+            (existing.dailyTaskId || existing.taskId)
+        ) {
+            const conv = await prisma.whatsAppConversation.findUnique({
+                where: { id: existing.conversationId },
+                select: { number: true },
+            });
+            await notifyAdminWhatsAppFailure({
+                type: "webhookDeliveryFailed",
+                number: conv?.number ?? existing.conversationId,
+                errorCode:
+                    errorRecord?.code != null ? String(errorRecord.code) : null,
+                errorTitle:
+                    errorRecord?.title != null
+                        ? String(errorRecord.title)
+                        : null,
+                errorDetails:
+                    errorRecord?.message != null
+                        ? String(errorRecord.message)
+                        : null,
+                dailyTaskId: existing.dailyTaskId,
+                taskId: existing.taskId,
             });
         }
     } catch (err) {

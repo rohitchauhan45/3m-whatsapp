@@ -44,7 +44,7 @@ export type TaskTableUserTask = {
     actualTime: string | null;
     extratTme: number | null;
     totalTime: string | null;
-    sent: boolean;
+    deliveryStatus: string | null;
     sendAt: Date | null;
     completedAt: Date | null;
     date: Date;
@@ -248,7 +248,7 @@ async function taskTableGroupedByUser(
             howmuchComplete: taskRow.howmuchComplete,
             actualTime: taskRow.actualTime,
             totalTime: taskRow.totalTime,
-            sent: taskRow.sent,
+            deliveryStatus: taskRow.deliveryStatus,
             sendAt: taskRow.sendAt,
             completedAt: taskRow.completedAt,
             date: dailyTask.date,

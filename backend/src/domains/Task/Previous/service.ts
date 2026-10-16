@@ -18,7 +18,8 @@ type PreviousTaskFollowupData = {
     name: string;
     rawStartTime: string;
     rawEndTime: string;
-    status: string
+    status: string;
+    deliveryStatus?: string | null;
 };
 
 export async function sendPreviousTaskFollowupButtons(
@@ -26,10 +27,14 @@ export async function sendPreviousTaskFollowupButtons(
     task: PreviousTaskFollowupData,
 ): Promise<boolean> {
     const msg = previousTaskmsg(task.name, task.rawStartTime, task.rawEndTime)
+    const firstMessageLink =
+        task.deliveryStatus == null ? { taskId: task.id } : {};
+
     const result = await sendWhatsAppButtons({
         number,
         message: msg,
         type: "previousTaskFollowUp",
+        ...firstMessageLink,
         buttons: [
             { id: `hold_${task.id}`, title: "Hold" },
             { id: `blocked_${task.id}`, title: "Blocked" },
@@ -43,7 +48,6 @@ export async function sendPreviousTaskFollowupButtons(
                 {
                     where: { id: task.id },
                     data: {
-                        sent: true,
                         status: TaskStaus.pending
                     }
                 }
@@ -91,7 +95,8 @@ export const handlePendigTaskUpdateText = async (from: string) => {
                 name: true,
                 rawStartTime: true,
                 rawEndTime: true,
-                status: true
+                status: true,
+                deliveryStatus: true,
             },
             orderBy: { position: "asc" },
         });
@@ -136,6 +141,7 @@ export const handlePreviousPendingTask = async (from: string, dailyTaskId: strin
                 position: true,
                 name: true,
                 status: true,
+                deliveryStatus: true,
                 rawStartTime: true,
                 rawEndTime: true
             },
@@ -173,7 +179,7 @@ export const sendPreviousTaskHoldReminders = async (): Promise<TaskResult> => {
                 endAt: { lt: now },
                 dailyTask: {
                     deletedAt: null,
-                    sent: true,
+                    deliveryStatus: { not: null },
                     status: AcceptStatus.accept,
                     finaldecision: { in: ["onTrack", "remark"] },
                 },
@@ -186,6 +192,7 @@ export const sendPreviousTaskHoldReminders = async (): Promise<TaskResult> => {
                 rawStartTime: true,
                 rawEndTime: true,
                 status: true,
+                deliveryStatus: true,
                 user: { select: { number: true } },
             },
         })

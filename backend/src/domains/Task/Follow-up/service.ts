@@ -131,6 +131,7 @@ export const sendStartTask = async (
                 description: true,
                 rawStartTime: true,
                 rawEndTime: true,
+                deliveryStatus: true,
                 user: {
                     select: {
                         id: true,
@@ -145,7 +146,6 @@ export const sendStartTask = async (
         let sent = 0;
         let skippedNoPhone = 0;
         let failedSends = 0;
-        const sendAt = new Date();
 
         const managerStats = new Map<
             string,
@@ -158,6 +158,10 @@ export const sendStartTask = async (
                 skippedNoPhone += 1;
                 continue;
             }
+
+            // First outbound for this task only — later messages skip taskId link.
+            const firstMessageLink =
+                task.deliveryStatus == null ? { taskId: task.id } : {};
 
             let result
 
@@ -172,6 +176,7 @@ export const sendStartTask = async (
                             rawEndTime: task.rawEndTime,
                         }),
                         type: "startTask",
+                        ...firstMessageLink,
                         buttons: [
                             { title: "On Track", id: `start_${task.id}` },
                             { title: "Remark", id: `taskquery_${task.id}` },
@@ -188,6 +193,7 @@ export const sendStartTask = async (
                             rawEndTime: task.rawEndTime,
                         }),
                         type: "startTask",
+                        ...firstMessageLink,
                         buttons: [
                             { title: "in Progress", id: `start_${task.id}` },
                             { title: "Delay", id: `delay_${task.id}` },
@@ -204,7 +210,7 @@ export const sendStartTask = async (
                 if (mode === "onTime") {
                     await prisma.task.update({
                         where: { id: task.id },
-                        data: { sent: true, sendAt, status: TaskStaus.pending },
+                        data: { status: TaskStaus.pending },
                     });
                 }
 
@@ -539,6 +545,7 @@ export const sendTaskFollowUp = async (taskIds: string[], mode: "hourly" | "endt
                 id: true,
                 name: true,
                 description: true,
+                deliveryStatus: true,
                 user: {
                     select: {
                         id: true,
@@ -553,7 +560,6 @@ export const sendTaskFollowUp = async (taskIds: string[], mode: "hourly" | "endt
         let sent = 0;
         let skippedNoPhone = 0;
         let failedSends = 0;
-        const sendAt = new Date();
 
         const managerFailures = new Map<
             string,
@@ -571,10 +577,14 @@ export const sendTaskFollowUp = async (taskIds: string[], mode: "hourly" | "endt
                 continue;
             }
 
+            const firstMessageLink =
+                task.deliveryStatus == null ? { taskId: task.id } : {};
+
             const result = await sendWhatsAppButtons({
                 number: phone,
                 message: userFollowUpTaskMessage(task),
                 type: "taskFollowUp",
+                ...firstMessageLink,
                 buttons: [
                     { title: "in Progress", id: `${mode === "hourly" ? "inphourly" : "inpendtime"}_${task.id}` },
                     { title: "Remark", id: `remark_${task.id}` },
@@ -584,10 +594,7 @@ export const sendTaskFollowUp = async (taskIds: string[], mode: "hourly" | "endt
 
             if (result.success) {
                 sent += 1;
-                await prisma.task.update({
-                    where: { id: task.id },
-                    data: { sent: true, sendAt },
-                });
+                // deliveryStatus only stamped when this was the first outbound (via messageLog)
                 logger.info(`task-follow-up sent user =${task.user.number}`);
             } else {
                 failedSends += 1;

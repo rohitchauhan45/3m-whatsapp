@@ -1,5 +1,6 @@
 import { prisma } from "../db";
 import logger from "../log/logger";
+import { clampWhatsAppBody } from "../../domains/messages/whatsappBodyLimit";
 import {
     sanitizeWhatsAppTemplateParam,
     sendMessageOnWhatsapp,
@@ -64,10 +65,35 @@ export async function notifyAdminMessage(
         }
         await sendMessageOnWhatsapp({
             number: adminUser.number,
-            message,
+            message: clampWhatsAppBody(message),
             type,
         });
     } catch (notifyErr) {
         logger.error("notifyAdminMessage failed", notifyErr);
     }
+}
+
+/** Notify admin when a first-message WhatsApp send fails (Meta reject / delivery fail). Body ≤ 1024. */
+export async function notifyAdminWhatsAppFailure(opts: {
+    type: string;
+    number: string;
+    errorCode?: string | null;
+    errorTitle?: string | null;
+    errorDetails?: string | null;
+    dailyTaskId?: string | null;
+    taskId?: string | null;
+}): Promise<void> {
+    const lines = [
+        "WhatsApp send FAILED",
+        `type: ${opts.type}`,
+        `to: ${opts.number}`,
+        opts.dailyTaskId ? `dailyTaskId: ${opts.dailyTaskId}` : null,
+        opts.taskId ? `taskId: ${opts.taskId}` : null,
+        opts.errorCode ? `code: ${opts.errorCode}` : null,
+        opts.errorTitle ? `title: ${opts.errorTitle}` : null,
+        opts.errorDetails ? `details: ${opts.errorDetails}` : null,
+        "Fix the cause — will not retry automatically.",
+    ].filter(Boolean) as string[];
+
+    await notifyAdminMessage(lines.join("\n"), "whatsappSendFailed");
 }

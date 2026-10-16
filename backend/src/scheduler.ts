@@ -103,7 +103,7 @@ export async function getDueFollowUpTaskIds(managerId?: string): Promise<string[
             ],
             dailyTask: {
                 deletedAt: null,
-                sent: true,
+                deliveryStatus: { not: null },
                 status: AcceptStatus.accept,
                 finaldecision: { in: ["onTrack", "remark"] }
             },
@@ -130,7 +130,7 @@ export async function getDueHourlyFollowUpTaskIds(managerId?: string): Promise<s
             ],
             dailyTask: {
                 deletedAt: null,
-                sent: true,
+                deliveryStatus: { not: null },
                 status: AcceptStatus.accept,
                 finaldecision: { in: ["onTrack", "remark"] }
             },
@@ -158,7 +158,7 @@ export async function getDueStartTaskIds(type: tastsendType, managerId?: string)
             ],
             dailyTask: {
                 deletedAt: null,
-                sent: true,
+                deliveryStatus: { not: null },
                 status: AcceptStatus.accept,
                 finaldecision: { in: ["onTrack", "remark"] }
             },

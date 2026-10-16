@@ -51,7 +51,7 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                             {
                                 deletedAt: null,
                                 date: assignDate,
-                                sent: false,
+                                deliveryStatus: null,
                                 sendAt: null,
                             },
                             orderBy: { date: "asc" },
@@ -114,7 +114,6 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                 });
 
                 let result;
-                let sendAt: Date | undefined;
 
                 const taskItems = dailyTask.tasks.map((t) => ({
                     name: t.name,
@@ -125,11 +124,11 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                 if (!existingConversation) {
                     // Case 1: first contact → template (full list if under limit, else preview)
                     const { text: taskList } = formatAssignTaskListForTemplatePreview(taskItems);
-                    sendAt = new Date();
                     result = await sendWhatsappTemplate({
                         number: child.number,
                         tname: "daily_task_assignment",
                         type: "assignTask",
+                        dailyTaskId: dailyTask.id,
                         parameters: [
                             { parameter_name: "user_name", text: child.name },
                             { parameter_name: "task_list", text: taskList },
@@ -148,12 +147,12 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                     if (hasOpenWindow) {
                         // Case 2: open 24h window → interactive (full if under 1024, else preview)
                         const { message: body } = buildAssignInteractiveMessage(child.name, taskItems);
-                        sendAt = new Date();
 
                         result = await sendWhatsAppButtons({
                             number: phone,
                             message: body,
                             type: "assignTask",
+                            dailyTaskId: dailyTask.id,
                             buttons: [
                                 {
                                     title: "Accept",
@@ -168,11 +167,11 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
                     } else {
                         // Case 3: window expired → template (full list if under limit, else preview)
                         const { text: taskList } = formatAssignTaskListForTemplatePreview(taskItems);
-                        sendAt = new Date();
                         result = await sendWhatsappTemplate({
                             number: child.number,
                             tname: "daily_task_assignment",
                             type: "assignTask",
+                            dailyTaskId: dailyTask.id,
                             parameters: [
                                 { parameter_name: "user_name", text: child.name },
                                 { parameter_name: "task_list", text: taskList },
@@ -187,9 +186,10 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
 
                 if (result && result.success) {
                     sent += 1;
+                    // deliveryStatus/sendAt stamped via messageLog (first assign message only)
                     await prisma.dailyTask.update({
                         where: { id: dailyTask.id },
-                        data: { sent: true, sendAt, status: AcceptStatus.remaining },
+                        data: { status: AcceptStatus.remaining },
                     })
                     logger.info(
                         `assign-task sent success user number =${child.number}`
@@ -383,7 +383,7 @@ export const sendRemaingstatusTomanager = async (): Promise<RemainingStatusResul
                 where: {
                     deletedAt: null,
                     date: assignDate,
-                    sent: true,
+                    deliveryStatus: { not: null },
                     status: AcceptStatus.remaining,
                     userId: { in: childIds },
                 },
@@ -399,7 +399,7 @@ export const sendRemaingstatusTomanager = async (): Promise<RemainingStatusResul
                 where: {
                     deletedAt: null,
                     date: assignDate,
-                    sent: true,
+                    deliveryStatus: { not: null },
                     status: AcceptStatus.decline,
                     remarkReason: { not: null },
                     userId: { in: childIds },
@@ -494,7 +494,7 @@ export const finalDecisionDailyTask = async (): Promise<FinalDecisionResult> => 
             where: {
                 deletedAt: null,
                 date: todayDate,
-                sent: true,
+                deliveryStatus: { not: null },
                 status: AcceptStatus.accept,
                 finaldecision: null,
                 user: { deletedAt: null, role: Role.user },
@@ -613,7 +613,7 @@ export async function sendMorningOnTrackButtonsToUser(phone: string): Promise<bo
             deletedAt: null,
             date: getISTTodayCalendarDate(),
             userId: user.id,
-            sent: true,
+            deliveryStatus: { not: null },
             status: AcceptStatus.accept,
         },
         include: {

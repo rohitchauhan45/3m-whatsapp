@@ -59,8 +59,9 @@ import { editTask } from '@/lib/services/taskService';
 import { cachedQueryOptions } from '@/lib/query-config';
 import { useToast } from '@/lib/providers/toast-provider';
 import {
+  formatDeliveryStatusLabel,
+  getDeliveryStatusClassName,
   getOnTrackStatusClassName,
-  getSentClassName,
   getTaskStatusClassName,
   getUserStatusClassName,
 } from '@/lib/utils/status-styles';
@@ -95,7 +96,7 @@ type TaskDetailModalData = {
   startAt?: string;
   endAt?: string;
   status?: string | null;
-  sent?: boolean;
+  deliveryStatus?: string | null;
   sendAt?: string | null;
   howmuchComplete?: string | null;
   extratTme?: number | null;
@@ -151,7 +152,7 @@ function buildAllTaskDetailModal(
     startAt: task.startAt,
     endAt: task.endAt,
     status: getTaskDisplayStatus(task),
-    sent: task.sent,
+    deliveryStatus: task.deliveryStatus,
     sendAt: task.sendAt,
     howmuchComplete: task.howmuchComplete,
     extratTme: task.extratTme,
@@ -225,9 +226,9 @@ function buildFilterTaskDetailModal(
   };
 }
 
-function formatUserStatusLabel(status: string | null, sent?: boolean): string {
+function formatUserStatusLabel(status: string | null, deliveryStatus?: string | null): string {
   const displayStatus = status || 'remaining';
-  if (displayStatus === 'remaining' && sent !== undefined) {
+  if (displayStatus === 'remaining' && deliveryStatus !== undefined) {
     return 'remaining';
   }
   return displayStatus;
@@ -604,7 +605,7 @@ function UserTableMobileList({
               {showUserStatusCol && (
                 <UserStatusBadge
                   status={dt.status}
-                  sent={useRemainingSentColors ? dt.sent : undefined}
+                  deliveryStatus={useRemainingSentColors ? dt.deliveryStatus : undefined}
                 />
               )}
             </div>
@@ -622,12 +623,12 @@ function UserTableMobileList({
             )}
             {showUserSentCol && (
               <div className="flex items-start justify-between gap-3 text-sm">
-                <span className="shrink-0 text-gray-500">Sent</span>
-                {dt.sent ? (
-                  <span className="font-semibold text-green-600">Yes</span>
-                ) : (
-                  <span className="font-semibold capitalize text-red-600">not send</span>
-                )}
+                <span className="shrink-0 text-gray-500">Delivery</span>
+                <span
+                  className={`font-semibold capitalize ${getDeliveryStatusClassName(dt.deliveryStatus)}`}
+                >
+                  {formatDeliveryStatusLabel(dt.deliveryStatus)}
+                </span>
               </div>
             )}
             {isUserAllFilter && (
@@ -690,20 +691,20 @@ function TaskStatusBadge({
 
 function UserStatusBadge({
   status,
-  sent,
+  deliveryStatus,
   large = false,
 }: {
   status: string | null;
-  sent?: boolean | null;
+  deliveryStatus?: string | null;
   large?: boolean;
 }) {
   const displayStatus = status || 'remaining';
   const textSize = large ? 'text-sm' : 'text-xs';
 
-  if (displayStatus === 'remaining' && sent !== undefined) {
+  if (displayStatus === 'remaining' && deliveryStatus !== undefined) {
     return (
       <span
-        className={`${textSize} font-semibold capitalize ${getUserStatusClassName(displayStatus, sent)}`}
+        className={`${textSize} font-semibold capitalize ${getUserStatusClassName(displayStatus, deliveryStatus)}`}
       >
         remaining
       </span>
@@ -717,7 +718,7 @@ function UserStatusBadge({
   };
 
   const label = labels[displayStatus] ?? displayStatus;
-  const className = getUserStatusClassName(displayStatus, sent);
+  const className = getUserStatusClassName(displayStatus, deliveryStatus);
 
   return <span className={`${textSize} font-semibold capitalize ${className}`}>{label}</span>;
 }
@@ -1512,7 +1513,7 @@ export default function AdminDashboard({
                           {showUserStatusCol && <th className="px-4 py-3">Status</th>}
                           {showUserOnTrackCol && <th className="px-4 py-3">On Track</th>}
                           {showUserReasonCol && <th className="px-4 py-3">Reason</th>}
-                          {showUserSentCol && <th className="px-4 py-3">Sent</th>}
+                          {showUserSentCol && <th className="px-4 py-3">Delivery</th>}
                           {isUserAllFilter && <th className="px-4 py-3">Task</th>}
                           {isUserAllFilter && (
                             <th className="px-2 py-3" aria-label="View details" />
@@ -1540,7 +1541,9 @@ export default function AdminDashboard({
                                 <td className="px-4 py-3">
                                   <UserStatusBadge
                                     status={dt.status}
-                                    sent={useRemainingSentColors ? dt.sent : undefined}
+                                    deliveryStatus={
+                                      useRemainingSentColors ? dt.deliveryStatus : undefined
+                                    }
                                     large
                                   />
                                 </td>
@@ -1555,13 +1558,11 @@ export default function AdminDashboard({
                               )}
                               {showUserSentCol && (
                                 <td className="px-4 py-3">
-                                  {dt.sent ? (
-                                    <span className="text-sm font-semibold text-green-600">Yes</span>
-                                  ) : (
-                                    <span className="text-sm font-semibold capitalize text-red-600">
-                                      not send
-                                    </span>
-                                  )}
+                                  <span
+                                    className={`text-sm font-semibold capitalize ${getDeliveryStatusClassName(dt.deliveryStatus)}`}
+                                  >
+                                    {formatDeliveryStatusLabel(dt.deliveryStatus)}
+                                  </span>
                                 </td>
                               )}
                               {isUserAllFilter && (
@@ -1655,13 +1656,13 @@ export default function AdminDashboard({
               value={formatUserStatusLabel(
                 userDetailModal.status,
                 !userDetailModal.status || userDetailModal.status === 'remaining'
-                  ? userDetailModal.sent
+                  ? userDetailModal.deliveryStatus
                   : undefined,
               )}
               valueClassName={getUserStatusClassName(
                 userDetailModal.status,
                 !userDetailModal.status || userDetailModal.status === 'remaining'
-                  ? userDetailModal.sent
+                  ? userDetailModal.deliveryStatus
                   : undefined,
               )}
             />
@@ -1672,9 +1673,9 @@ export default function AdminDashboard({
               hideWhenEmpty={false}
             />
             <ModalDetailRow
-              label="Sent"
-              value={userDetailModal.sent ? 'Yes' : 'not send'}
-              valueClassName={getSentClassName(userDetailModal.sent)}
+              label="Delivery"
+              value={formatDeliveryStatusLabel(userDetailModal.deliveryStatus)}
+              valueClassName={getDeliveryStatusClassName(userDetailModal.deliveryStatus)}
             />
             <ModalDetailRow
               label="Decline Reason"
@@ -1918,11 +1919,11 @@ export default function AdminDashboard({
                 valueClassName={getTaskStatusClassName(taskDetailModal.status)}
               />
             )}
-            {taskDetailModal.sent !== undefined && (
+            {taskDetailModal.deliveryStatus !== undefined && (
               <ModalDetailRow
-                label="Sent"
-                value={taskDetailModal.sent ? 'Yes' : 'not send'}
-                valueClassName={getSentClassName(taskDetailModal.sent)}
+                label="Delivery"
+                value={formatDeliveryStatusLabel(taskDetailModal.deliveryStatus)}
+                valueClassName={getDeliveryStatusClassName(taskDetailModal.deliveryStatus)}
               />
             )}
             {taskDetailModal.sendAt !== undefined && (

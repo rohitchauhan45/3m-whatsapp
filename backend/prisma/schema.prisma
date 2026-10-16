@@ -161,7 +161,7 @@ model DailyTask{
   remarkReason    String?
   absentReason    String?
 
-  sent            Boolean       @default(false)
+  deliveryStatus  messageStatus?
   sendAt          DateTime?
 
   date            DateTime
@@ -173,6 +173,7 @@ model DailyTask{
   user            User          @relation(fields:[userId] , references:[id] , onDelete:Cascade)
 
   tasks           Task[]
+  messages        Message[]
   @@index([userId])
   @@index([deletedAt])
 }
@@ -199,7 +200,7 @@ model Task {
   totalTime        String?
 
   //assign details
-  sent             Boolean          @default(false)
+  deliveryStatus   messageStatus?
   sendAt           DateTime?
 
   rawStartTime     String
@@ -223,6 +224,7 @@ model Task {
   //relation
   user             User             @relation(fields:[userId] , references:[id] , onDelete:Cascade)
   dailyTask        DailyTask        @relation(fields:[dailyTaskId] , references:[id] , onDelete:Cascade)
+  messages         Message[]
 
   @@index([userId])
   @@index([dailyTaskId])
@@ -417,6 +419,12 @@ model Message{
   conversationId    String
   conversation      WhatsAppConversation @relation(fields:[conversationId] , references:[id] , onDelete:Cascade)
 
+  /** Set only on the first outbound message for that DailyTask / Task. */
+  dailyTaskId       String?
+  dailyTask         DailyTask?           @relation(fields:[dailyTaskId], references:[id], onDelete:SetNull)
+  taskId            String?
+  task              Task?                @relation(fields:[taskId], references:[id], onDelete:SetNull)
+
   style             MessageStyle
   type              String
   body              String               @db.Text
@@ -444,5 +452,7 @@ model Message{
 
   @@index([conversationId,createdAt])
   @@index([status,createdAt])
-  @@index([type,status]) 
+  @@index([type,status])
+  @@index([dailyTaskId])
+  @@index([taskId])
 }
