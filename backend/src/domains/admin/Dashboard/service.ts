@@ -4,13 +4,13 @@ import {
     Task,
     TaskFinalStatus,
     TaskStaus,
-    messageStatus,
 } from "@prisma/client";
 import { prisma } from "../../../libraries/db";
 import { AppError } from "../../../libraries/error-handling/AppError";
 import logger from "../../../libraries/log/logger";
 import { convertTimeRangeintoDate } from "../../../libraries/util/Admin/timing";
 import { notifyAdminError } from "../../../libraries/util/notifyAdminError";
+import { isAssignRetryPending } from "../../Task/Assign/service";
 
 export type PresetTimeRange =
     | "today"
@@ -68,7 +68,6 @@ export type TaskTableUserGroup = {
 
 /** Pending failed "assignTask" message for this DailyTask (RetryFailedMessage). */
 export type AssignRetryInfo = {
-    id: string;
     failedAt: Date;
     errorTitle: string | null;
     retryCount: number;
@@ -418,7 +417,6 @@ export const usertable = async (
                     },
                     retryFailedMessage: {
                         select: {
-                            id: true,
                             failedAt: true,
                             errorTitle: true,
                             retryCount: true,
@@ -435,21 +433,14 @@ export const usertable = async (
 
         const rows: UserTableRow[] = dailyTasks.map(({ user, retryFailedMessage, ...dt }) => {
             const windowExpiresAt = user?.conversation[0]?.windowExpiresAt ?? null;
-            const pendingRetry =
-                retryFailedMessage &&
-                !retryFailedMessage.resolvedAt &&
-                dt.deliveryStatus === messageStatus.FAILED
-                    ? retryFailedMessage
-                    : null;
             return {
                 ...dt,
                 user: user ? { name: user.name, number: user.number } : undefined,
-                assignRetry: pendingRetry
+                assignRetry: isAssignRetryPending(dt.deliveryStatus, retryFailedMessage)
                     ? {
-                          id: pendingRetry.id,
-                          failedAt: pendingRetry.failedAt,
-                          errorTitle: pendingRetry.errorTitle,
-                          retryCount: pendingRetry.retryCount,
+                          failedAt: retryFailedMessage?.failedAt ?? dt.updatedAt,
+                          errorTitle: retryFailedMessage?.errorTitle ?? null,
+                          retryCount: retryFailedMessage?.retryCount ?? 0,
                           windowOpen: windowExpiresAt != null && windowExpiresAt.getTime() > now,
                       }
                     : null,

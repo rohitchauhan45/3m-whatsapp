@@ -5,6 +5,8 @@ import logger from "../../../libraries/log/logger";
 import { notifyAdminError } from "../../../libraries/util/notifyAdminError";
 import { convertTimeRangeintoDate } from "../../../libraries/util/Admin/timing";
 import type { timeRange } from "./service";
+import { ASSIGN_TASK_TYPE } from "../../whtsapp/messageLog";
+import { isAssignRetryPending } from "../../Task/Assign/service";
 
 export type ConversationStatusFilter = "all" | "open" | "expired" | "failed";
 export type ConversationDirection = "incoming" | "outgoing";
@@ -321,6 +323,54 @@ export const conversationMessages = async (
             conversation.windowExpiresAt != null &&
             conversation.windowExpiresAt.getTime() > now.getTime();
 
+        const failedAssignDailyTaskIds = [
+            ...new Set(
+                messages
+                    .filter(
+                        (m) =>
+                            m.direction === MessageDirection.OUTGOING &&
+                            m.type === ASSIGN_TASK_TYPE &&
+                            m.status === messageStatus.FAILED &&
+                            m.dailyTaskId,
+                    )
+                    .map((m) => m.dailyTaskId as string),
+            ),
+        ];
+        const pendingDailyTasks = failedAssignDailyTaskIds.length
+            ? await prisma.dailyTask.findMany({
+                  where: { id: { in: failedAssignDailyTaskIds }, deletedAt: null },
+                  select: {
+                      id: true,
+                      deliveryStatus: true,
+                      retryFailedMessage: { select: { messageId: true, resolvedAt: true } },
+                  },
+              })
+            : [];
+        const pendingById = new Map(
+            pendingDailyTasks
+                .filter((dt) => isAssignRetryPending(dt.deliveryStatus, dt.retryFailedMessage))
+                .map((dt) => [dt.id, dt]),
+        );
+
+        // Button only on the latest failed message of each pending DailyTask.
+        const retryShownFor = new Set<string>();
+        const messagesWithRetry = messages.map((m) => {
+            const pending = m.dailyTaskId ? pendingById.get(m.dailyTaskId) : undefined;
+            const isLatestFailed =
+                pending &&
+                m.type === ASSIGN_TASK_TYPE &&
+                m.status === messageStatus.FAILED &&
+                !retryShownFor.has(pending.id) &&
+                (pending.retryFailedMessage?.messageId
+                    ? pending.retryFailedMessage.messageId === m.id
+                    : true);
+            if (isLatestFailed) retryShownFor.add(pending.id);
+            return {
+                ...m,
+                assignRetry: isLatestFailed ? { dailyTaskId: pending.id, windowOpen } : null,
+            };
+        });
+
         return {
             conversation: {
                 id: conversation.id,
@@ -337,7 +387,7 @@ export const conversationMessages = async (
                 lastSentMessageType: conversation.lastSentMessageType,
                 lastSentMessageStatus: conversation.lastSentMessageStatus,
             },
-            messages,
+            messages: messagesWithRetry,
             pagination: {
                 page,
                 limit,

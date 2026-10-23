@@ -72,6 +72,8 @@ export type ConversationMessage = {
   errorCode: string | null;
   errorTitle: string | null;
   errorDetails: string | null;
+  /** Set on the latest failed assignTask message that can still be re-sent. */
+  assignRetry: { dailyTaskId: string; windowOpen: boolean } | null;
 };
 
 export type ConversationDetail = {
@@ -106,7 +108,6 @@ export type ConversationMessagesQuery = {
 };
 
 export type { PaginationMeta };
-
 export async function fetchMessageCards(time: MessageTimeRange) {
   const { data } = await apiClient.get<{ data: MessageCardData }>(
     '/admin/dashboard/message-cards',

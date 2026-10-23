@@ -7,6 +7,7 @@ import {
 import { prisma } from "../../libraries/db";
 import logger from "../../libraries/log/logger";
 import { notifyAdminWhatsAppFailure } from "../../libraries/util/notifyAdminError";
+import { notifyDashboardUpdate } from "../../libraries/realtime";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -272,6 +273,7 @@ export async function saveOutgoingMessage(
             });
         }
 
+        notifyDashboardUpdate();
         return { messageId: message.id, conversationId: conversation.id };
     } catch (err) {
         logger.error("messageLog saveOutgoingMessage failed", err);
@@ -379,6 +381,7 @@ export async function applyWhatsAppStatusUpdate(input: {
                 lastAttemptAt: at,
             },
         });
+        notifyDashboardUpdate();
 
         const conversation = await prisma.whatsAppConversation.findUnique({
             where: { id: existing.conversationId },
@@ -550,6 +553,7 @@ export async function saveIncomingMessage(
             },
         });
 
+        notifyDashboardUpdate();
         return { saved: true, duplicate: false, messageId: message.id };
     } catch (err) {
         if (

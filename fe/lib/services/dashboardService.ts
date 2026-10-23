@@ -119,7 +119,6 @@ export interface DashboardDailyTask {
 }
 
 export interface AssignRetryInfo {
-  id: string;
   failedAt: string;
   errorTitle: string | null;
   retryCount: number;

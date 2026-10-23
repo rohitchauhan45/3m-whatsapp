@@ -26,6 +26,7 @@ import {
     getISTTomorrowCalendarDate,
 } from "../../../libraries/util/Task/istDate";
 import { notifyAdminError } from "../../../libraries/util/notifyAdminError";
+import { notifyDashboardUpdate } from "../../../libraries/realtime";
 import { findActiveTaskUserByWhatsAppNumber } from "../shared";
 import type { FinalDecisionResult, RemainingStatusResult, TaskResult } from "../types";
 import { sendStartTask } from "../Follow-up/service";
@@ -262,6 +263,17 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
 const resendAssignInFlight = new Set<string>();
 
 /**
+ * Only assignTask sends link a dailyTaskId, so DailyTask.deliveryStatus FAILED = assign message failed.
+ * A resolved RetryFailedMessage row means it was already re-sent.
+ */
+export function isAssignRetryPending(
+    deliveryStatus: messageStatus | null,
+    retry: { resolvedAt: Date | null } | null,
+): boolean {
+    return deliveryStatus === messageStatus.FAILED && !retry?.resolvedAt;
+}
+
+/**
  * Admin re-send of a failed "assignTask" message (RetryFailedMessage) while the user's
  * 24h window is open — session message (no template), same body/buttons as assignTask Case 2.
  */
@@ -288,16 +300,8 @@ export const resendFailedAssignTask = async (
 
         if (!dailyTask) throw new AppError("Not found", "Daily task not found", 404);
 
-        const retry = dailyTask.retryFailedMessage;
-        if (!retry || retry.resolvedAt) {
-            throw new AppError("Validation error", "No failed assign message to re-send", 400);
-        }
-        if (dailyTask.deliveryStatus !== messageStatus.FAILED) {
-            throw new AppError(
-                "Conflict",
-                "Assign message is not in failed state anymore",
-                409,
-            );
+        if (!isAssignRetryPending(dailyTask.deliveryStatus, dailyTask.retryFailedMessage)) {
+            throw new AppError("Conflict", "No failed assign message to re-send", 409);
         }
 
         const user = dailyTask.user;
@@ -311,13 +315,13 @@ export const resendFailedAssignTask = async (
 
         const conversation = await prisma.whatsAppConversation.findUnique({
             where: { userId: user.id },
-            select: { windowExpiresAt: true },
+            select: { id: true, windowExpiresAt: true },
         });
         const now = new Date();
         const hasOpenWindow =
             conversation?.windowExpiresAt != null &&
             conversation.windowExpiresAt.getTime() > now.getTime();
-        if (!hasOpenWindow) {
+        if (!conversation || !hasOpenWindow) {
             throw new AppError(
                 "Validation error",
                 "User's WhatsApp window is closed — cannot send a non-template message",
@@ -354,20 +358,30 @@ export const resendFailedAssignTask = async (
         });
 
         const attemptAt = new Date();
+        // Row may be missing for failures logged before RetryFailedMessage existed.
+        const retryCreate = {
+            dailyTaskId: dailyTask.id,
+            conversationId: conversation.id,
+            failedAt: dailyTask.updatedAt,
+            retryCount: 1,
+            lastRetryAt: attemptAt,
+        };
 
         if (result.success) {
             await prisma.dailyTask.update({
                 where: { id: dailyTask.id },
                 data: { status: AcceptStatus.remaining },
             });
-            await prisma.retryFailedMessage.update({
+            await prisma.retryFailedMessage.upsert({
                 where: { dailyTaskId: dailyTask.id },
-                data: {
+                create: { ...retryCreate, resolvedAt: attemptAt },
+                update: {
                     resolvedAt: attemptAt,
                     lastRetryAt: attemptAt,
                     retryCount: { increment: 1 },
                 },
             });
+            notifyDashboardUpdate();
             logger.info(`assign-task re-send success dailyTaskId=${dailyTask.id} number=${phone}`);
             return { success: true, status: 200, message: "Assign task message re-sent" };
         }
@@ -377,10 +391,12 @@ export const resendFailedAssignTask = async (
             where: { id: dailyTask.id, deliveryStatus: null },
             data: { deliveryStatus: messageStatus.FAILED, sendAt: null },
         });
-        await prisma.retryFailedMessage.update({
+        await prisma.retryFailedMessage.upsert({
             where: { dailyTaskId: dailyTask.id },
-            data: { lastRetryAt: attemptAt, retryCount: { increment: 1 } },
+            create: retryCreate,
+            update: { lastRetryAt: attemptAt, retryCount: { increment: 1 } },
         });
+        notifyDashboardUpdate();
         logger.warn(
             `assign-task re-send failed dailyTaskId=${dailyTask.id} number=${phone} detail=${result.message}`,
         );

@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { Search } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Loader2, Search } from 'lucide-react';
 import { AdminTableSkeleton } from '@/components/ui/skeletons';
 import Modal, { ModalDetailGrid, ModalDetailRow } from '@/components/ui/Modal';
 import { cachedQueryOptions } from '@/lib/query-config';
-import { queryKeys } from '@/lib/query-keys';
+import { invalidateDashboardQueries, queryKeys } from '@/lib/query-keys';
+import { getApiErrorMessage } from '@/lib/api/client';
+import { useToast } from '@/lib/providers/toast-provider';
+import { resendFailedAssign } from '@/lib/services/dashboardService';
 import {
   fetchConversationMessages,
   type ConversationMessage,
@@ -111,6 +114,47 @@ function DirectionFilterBar({
         </button>
       ))}
     </div>
+  );
+}
+
+/** Re-send failed assignTask message — only while the user's 24h window is open. */
+function ResendAssignButton({
+  msg,
+  sendingId,
+  onResend,
+}: {
+  msg: ConversationMessage;
+  sendingId: string | null;
+  onResend: (dailyTaskId: string) => void;
+}) {
+  const retry = msg.assignRetry;
+  if (!retry) return null;
+
+  if (!retry.windowOpen) {
+    return (
+      <span
+        className="text-xs font-medium text-gray-400"
+        title="User's WhatsApp window is closed — re-send available after the user messages"
+      >
+        Window closed
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onResend(retry.dailyTaskId);
+      }}
+      disabled={sendingId !== null}
+      title="Re-send assign task message"
+      className="inline-flex items-center gap-1 rounded-full border border-brand-primary/30 px-2.5 py-1 text-xs font-semibold text-brand-primary hover:bg-brand-primary/5 disabled:opacity-50"
+    >
+      {sendingId === retry.dailyTaskId && <Loader2 size={12} className="animate-spin" />}
+      Send
+    </button>
   );
 }
 
@@ -221,6 +265,30 @@ export default function ConversationMessages({
       }),
     ...cachedQueryOptions,
   });
+
+  const queryClient = useQueryClient();
+  const { showToast, showError } = useToast();
+  const resendMutation = useMutation({
+    mutationFn: (dailyTaskId: string) => resendFailedAssign(dailyTaskId),
+    onSuccess: (res) => {
+      invalidateDashboardQueries(queryClient);
+      if (!res.success) {
+        showError(res.message || 'Failed to re-send message');
+        return;
+      }
+      setDetail(null);
+      showToast(res.message || 'Message sent', 'success');
+    },
+    onError: (err) => {
+      invalidateDashboardQueries(queryClient);
+      showError(getApiErrorMessage(err, 'Failed to re-send message'));
+    },
+  });
+  const resendingId = resendMutation.isPending ? (resendMutation.variables ?? null) : null;
+  const handleResend = (dailyTaskId: string) => {
+    if (resendMutation.isPending) return;
+    resendMutation.mutate(dailyTaskId);
+  };
 
   useEffect(() => {
     const name = query.data?.conversation.userName;
@@ -353,7 +421,14 @@ export default function ConversationMessages({
                         </td>
                         <td className="px-4 py-3 text-gray-700">{truncateBody(msg.body)}</td>
                         <td className="px-4 py-3">
-                          <StatusBadge status={msg.status} />
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge status={msg.status} />
+                            <ResendAssignButton
+                              msg={msg}
+                              sendingId={resendingId}
+                              onResend={handleResend}
+                            />
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
                           {formatDateTime(getMessageTime(msg))}
@@ -390,8 +465,8 @@ export default function ConversationMessages({
                   </div>
                 ) : (
                   messages.map((msg) => (
+                    <div key={msg.id} className="space-y-1.5">
                     <button
-                      key={msg.id}
                       type="button"
                       onClick={() => setDetail(msg)}
                       className={`w-full rounded-xl border p-4 text-left shadow-sm ${
@@ -412,6 +487,16 @@ export default function ConversationMessages({
                         {formatDateTime(getMessageTime(msg))} · {msg.style.toLowerCase()}
                       </p>
                     </button>
+                    {msg.assignRetry && (
+                      <div className="flex justify-end px-1">
+                        <ResendAssignButton
+                          msg={msg}
+                          sendingId={resendingId}
+                          onResend={handleResend}
+                        />
+                      </div>
+                    )}
+                    </div>
                   ))
                 )}
               </div>
@@ -445,6 +530,15 @@ export default function ConversationMessages({
               </p>
               {detail.status.toUpperCase() === 'FAILED' && detail.errorTitle && (
                 <p className="mt-1 text-sm font-medium text-red-600">{detail.errorTitle}</p>
+              )}
+              {detail.assignRetry && (
+                <div className="mt-3">
+                  <ResendAssignButton
+                    msg={detail}
+                    sendingId={resendingId}
+                    onResend={handleResend}
+                  />
+                </div>
               )}
             </div>
 

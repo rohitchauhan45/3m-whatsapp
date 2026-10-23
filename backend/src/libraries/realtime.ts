@@ -21,8 +21,14 @@ export function initRealtime(httpServer: HttpServer): void {
     logger.info("realtime Socket.IO enabled");
 }
 
-/** Tell open admin dashboards to refetch via TanStack Query. */
+const NOTIFY_COALESCE_MS = 1000;
+let notifyTimer: NodeJS.Timeout | null = null;
+
+/** Tell open admin dashboards to refetch via TanStack Query (bursts coalesced into one emit). */
 export function notifyDashboardUpdate(): void {
-    if (!io) return;
-    io.emit(DASHBOARD_UPDATED_EVENT);
+    if (!io || notifyTimer) return;
+    notifyTimer = setTimeout(() => {
+        notifyTimer = null;
+        io?.emit(DASHBOARD_UPDATED_EVENT);
+    }, NOTIFY_COALESCE_MS);
 }
