@@ -97,6 +97,11 @@ enum MessageStyle{
   INTERACTIVE
 }
 
+enum MessageDirection{
+  OUTGOING
+  INCOMING
+}
+
 model User{
   id               String                 @id @default(cuid())
   name             String   
@@ -174,6 +179,7 @@ model DailyTask{
 
   tasks           Task[]
   messages        Message[]
+  retryFailedMessage RetryFailedMessage?
   @@index([userId])
   @@index([deletedAt])
 }
@@ -410,6 +416,7 @@ model WhatsAppConversation {
   updatedAt               DateTime       @updatedAt
 
   messages                Message[]
+  retryFailedMessages     RetryFailedMessage[]
 
   @@index([windowExpiresAt])
 }
@@ -425,6 +432,7 @@ model Message{
   taskId            String?
   task              Task?                @relation(fields:[taskId], references:[id], onDelete:SetNull)
 
+  direction         MessageDirection
   style             MessageStyle
   type              String
   body              String               @db.Text
@@ -439,6 +447,8 @@ model Message{
   deliveredAt       DateTime?
   readAt            DateTime?
   failedAt          DateTime?
+
+  recievedAt        DateTime?
 
   errorCode         String?
   errorTitle        String?
@@ -455,4 +465,34 @@ model Message{
   @@index([type,status])
   @@index([dailyTaskId])
   @@index([taskId])
+}
+
+/** Failed "assignTask" messages only — one row per DailyTask, re-sendable while the 24h window is open. */
+model RetryFailedMessage{
+  id                String               @id @default(cuid())
+  conversationId    String
+  conversation      WhatsAppConversation @relation(fields:[conversationId] , references:[id] , onDelete:Cascade)
+
+  dailyTaskId       String               @unique
+  dailyTask         DailyTask            @relation(fields:[dailyTaskId], references:[id], onDelete:Cascade)
+
+  /** Latest failed Message.id for this DailyTask. */
+  messageId         String?
+  type              String               @default("assignTask")
+
+  errorCode         String?
+  errorTitle        String?
+  errorDetails      String?
+  failedAt          DateTime
+
+  retryCount        Int                  @default(0)
+  lastRetryAt       DateTime?
+  /** Set when a manual re-send succeeds; null = still waiting for re-send. */
+  resolvedAt        DateTime?
+
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([conversationId])
+  @@index([resolvedAt])
 }

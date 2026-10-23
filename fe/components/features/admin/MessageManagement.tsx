@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  ArrowDownLeft,
+  ArrowUpRight,
   CheckCircle2,
   Clock,
   Eye,
@@ -19,10 +21,13 @@ import { queryKeys } from '@/lib/query-keys';
 import {
   fetchConversationTable,
   fetchMessageCards,
+  getMessageTimeRangeOptions,
   type ConversationRow,
   type ConversationStatusFilter,
+  type MessageTimeRange,
   type PaginationMeta,
 } from '@/lib/services/messageService';
+import Dropdown from '@/components/ui/Dropdown';
 import { ui } from '@/lib/utils/ui-classes';
 
 const TABLE_MIN_HEIGHT = 'min-h-[420px]';
@@ -79,6 +84,12 @@ function WindowBadge({ open }: { open: boolean }) {
   ) : (
     <span className="text-sm font-semibold text-amber-600">Expired</span>
   );
+}
+
+function getLastType(row: ConversationRow): string {
+  const type =
+    row.lastDirection === 'incoming' ? row.lastIncomingMessageType : row.lastSentMessageType;
+  return type || '—';
 }
 
 function DirectionBadge({ direction }: { direction: 'incoming' | 'outgoing' | null }) {
@@ -223,7 +234,7 @@ function ConversationMobileList({
             </div>
             <div className="flex justify-between gap-3">
               <span className="text-gray-500">Last type</span>
-              <span className="font-medium text-gray-800 truncate">{row.lastSentMessageType || '—'}</span>
+              <span className="font-medium text-gray-800 truncate">{getLastType(row)}</span>
             </div>
             <div className="flex justify-between gap-3">
               <span className="text-gray-500">Status</span>
@@ -249,6 +260,7 @@ function ConversationMobileList({
 export default function MessageManagement() {
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<ConversationStatusFilter>('all');
+  const [timeRange, setTimeRange] = useState<MessageTimeRange>('today');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -261,17 +273,18 @@ export default function MessageManagement() {
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, search]);
+  }, [statusFilter, search, timeRange]);
 
   const cardsQuery = useQuery({
-    queryKey: queryKeys.dashboard.messageCards,
-    queryFn: fetchMessageCards,
+    queryKey: queryKeys.dashboard.messageCards(timeRange),
+    queryFn: () => fetchMessageCards(timeRange),
     ...cachedQueryOptions,
   });
 
   const tableQuery = useQuery({
     queryKey: queryKeys.dashboard.messageTable({
       status: statusFilter,
+      time: timeRange,
       page,
       limit,
       search,
@@ -279,6 +292,7 @@ export default function MessageManagement() {
     queryFn: () =>
       fetchConversationTable({
         status: statusFilter,
+        time: timeRange,
         page,
         limit,
         search: search || undefined,
@@ -297,7 +311,7 @@ export default function MessageManagement() {
     <div className="animate-fade-in min-h-[calc(100dvh-11rem)] max-md:min-h-0 flex flex-col w-full">
       <div className="space-y-12 max-md:space-y-6 flex flex-col flex-1 min-h-0">
         {cardsQuery.data && (
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 max-md:gap-2.5">
+          <div className="grid grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7 gap-4 max-md:gap-2.5">
             <StatCard
               title="Conversations"
               value={cardsQuery.data.totalConversations}
@@ -323,6 +337,18 @@ export default function MessageManagement() {
               iconColor="text-brand-primary"
             />
             <StatCard
+              title="Incoming"
+              value={cardsQuery.data.incomingMessages}
+              icon={ArrowDownLeft}
+              iconColor="text-sky-600"
+            />
+            <StatCard
+              title="Outgoing"
+              value={cardsQuery.data.outgoingMessages}
+              icon={ArrowUpRight}
+              iconColor="text-violet-600"
+            />
+            <StatCard
               title="Failed"
               value={cardsQuery.data.failedMessages}
               icon={AlertTriangle}
@@ -336,13 +362,24 @@ export default function MessageManagement() {
             <div className="max-md:w-full max-md:overflow-x-auto touch-scroll">
               <StatusFilterBar value={statusFilter} onChange={setStatusFilter} />
             </div>
-            <div className="relative w-full md:w-64">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search by name or number..."
-                className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-brand-primary/20 bg-white max-md:min-h-11"
+            <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-3 max-md:w-full">
+              <div className="relative w-full md:w-64">
+                <Search
+                  size={16}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+                <input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Search by name or number..."
+                  className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-brand-primary/20 bg-white max-md:min-h-11"
+                />
+              </div>
+              <Dropdown
+                value={timeRange}
+                onChange={(v) => setTimeRange(v as MessageTimeRange)}
+                options={getMessageTimeRangeOptions(timeRange)}
+                align="right"
               />
             </div>
           </div>
@@ -401,9 +438,7 @@ export default function MessageManagement() {
                         <td className="px-4 py-3">
                           <DirectionBadge direction={row.lastDirection} />
                         </td>
-                        <td className="px-4 py-3 text-gray-700 truncate">
-                          {row.lastSentMessageType || '—'}
-                        </td>
+                        <td className="px-4 py-3 text-gray-700 truncate">{getLastType(row)}</td>
                         <td className="px-4 py-3">
                           <StatusBadge status={row.lastSentMessageStatus} />
                         </td>

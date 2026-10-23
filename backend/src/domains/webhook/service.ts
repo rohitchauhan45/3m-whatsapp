@@ -21,7 +21,11 @@ import { attendence } from "../attendence/service";
 import { prisma } from "../../libraries/db";
 import { sendMessageOnWhatsapp, normalizeWhatsAppNumber } from "../../domains/whtsapp/sendWhatsApp";
 import { touchConversation } from "../../domains/conversation/service";
-import { applyWhatsAppStatusUpdate } from "../../domains/whtsapp/messageLog";
+import {
+    applyWhatsAppStatusUpdate,
+    saveIncomingMessage,
+} from "../../domains/whtsapp/messageLog";
+import { MessageStyle } from "@prisma/client";
 import { notifyDashboardUpdate } from "../../libraries/realtime";
 import { notifyAdminError } from "../../libraries/util/notifyAdminError";
 
@@ -90,6 +94,115 @@ function extractButtonPayload(msg: Record<string, unknown>, type: string): strin
     }
 
     return null;
+}
+
+function readString(value: unknown): string {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function joinLines(lines: string[]): string {
+    return lines.filter(Boolean).join("\n");
+}
+
+/** Human-readable body + style for storing an incoming Meta message. */
+function describeIncomingMessage(
+    msg: Record<string, unknown>,
+    type: string,
+): { style: MessageStyle; body: string } {
+    if (type === "text" && isRecord(msg.text)) {
+        return { style: MessageStyle.TEXT, body: readString(msg.text.body) };
+    }
+
+    if (type === "button" && isRecord(msg.button)) {
+        const text = readString(msg.button.text);
+        const payload = readString(msg.button.payload);
+        return {
+            style: MessageStyle.INTERACTIVE,
+            body: joinLines([
+                text ? `Button: ${text}` : "",
+                payload && payload !== text ? `Payload: ${payload}` : "",
+            ]),
+        };
+    }
+
+    if (type === "interactive" && isRecord(msg.interactive)) {
+        const interactive = msg.interactive;
+        const reply = isRecord(interactive.button_reply)
+            ? interactive.button_reply
+            : isRecord(interactive.list_reply)
+              ? interactive.list_reply
+              : null;
+        const label = interactive.type === "list_reply" ? "List reply" : "Button";
+        return {
+            style: MessageStyle.INTERACTIVE,
+            body: reply
+                ? joinLines([
+                      readString(reply.title) ? `${label}: ${readString(reply.title)}` : "",
+                      readString(reply.description)
+                          ? `Description: ${readString(reply.description)}`
+                          : "",
+                      readString(reply.id) ? `Payload: ${readString(reply.id)}` : "",
+                  ])
+                : `Interactive: ${readString(interactive.type) || "unknown"}`,
+        };
+    }
+
+    if (type === "location" && isRecord(msg.location)) {
+        const loc = msg.location;
+        const latitude = parseCoordinate(loc.latitude);
+        const longitude = parseCoordinate(loc.longitude);
+        return {
+            style: MessageStyle.TEXT,
+            body: joinLines([
+                latitude !== null && longitude !== null
+                    ? `Location: ${latitude}, ${longitude}`
+                    : "Location",
+                readString(loc.name) ? `Name: ${readString(loc.name)}` : "",
+                readString(loc.address) ? `Address: ${readString(loc.address)}` : "",
+            ]),
+        };
+    }
+
+    if (
+        (type === "image" ||
+            type === "video" ||
+            type === "audio" ||
+            type === "document" ||
+            type === "sticker") &&
+        isRecord(msg[type])
+    ) {
+        const media = msg[type] as Record<string, unknown>;
+        return {
+            style: MessageStyle.TEXT,
+            body: joinLines([
+                `${type.charAt(0).toUpperCase()}${type.slice(1)}`,
+                readString(media.filename) ? `File: ${readString(media.filename)}` : "",
+                readString(media.caption) ? `Caption: ${readString(media.caption)}` : "",
+                readString(media.mime_type) ? `Mime: ${readString(media.mime_type)}` : "",
+                readString(media.id) ? `Media ID: ${readString(media.id)}` : "",
+            ]),
+        };
+    }
+
+    if (type === "reaction" && isRecord(msg.reaction)) {
+        const emoji = readString(msg.reaction.emoji);
+        return {
+            style: MessageStyle.TEXT,
+            body: emoji ? `Reaction: ${emoji}` : "Reaction removed",
+        };
+    }
+
+    if (type === "contacts" && Array.isArray(msg.contacts)) {
+        const names = msg.contacts
+            .map((c) => (isRecord(c) && isRecord(c.name) ? readString(c.name.formatted_name) : ""))
+            .filter(Boolean);
+        return {
+            style: MessageStyle.TEXT,
+            body: names.length ? `Contacts: ${names.join(", ")}` : "Contacts",
+        };
+    }
+
+    return { style: MessageStyle.TEXT, body: `Unsupported message type: ${type}` };
 }
 
 async function findUserByWhatsAppNumber(from: string) {
@@ -183,6 +296,22 @@ async function handleIncomingMessage(msg: Record<string, unknown>): Promise<void
         })
         return
     }
+
+    const incoming = describeIncomingMessage(msg, type);
+    const savedIncoming = await saveIncomingMessage({
+        userId: user.id,
+        number: user.number,
+        whatsappMessageId: messageId,
+        type,
+        style: incoming.style,
+        body: incoming.body,
+        timestamp:
+            typeof msg.timestamp === "string" || typeof msg.timestamp === "number"
+                ? msg.timestamp
+                : null,
+    });
+    // Meta re-delivered a message we already stored (and processed) — do not re-run actions.
+    if (savedIncoming.duplicate) return;
 
     const buttonPayload = extractButtonPayload(msg, type);
     if (buttonPayload) {

@@ -1,4 +1,5 @@
 import {
+    MessageDirection,
     MessageStyle,
     messageStatus,
     Prisma,
@@ -142,6 +143,42 @@ async function syncDeliveryStatusFromMessage(opts: {
     }
 }
 
+export const ASSIGN_TASK_TYPE = "assignTask";
+
+/**
+ * Store a failed "assignTask" message for manual re-send (one row per DailyTask).
+ * A new failure re-opens the row (resolvedAt = null). Never throws.
+ */
+async function recordFailedAssignTaskMessage(opts: {
+    conversationId: string;
+    dailyTaskId: string;
+    messageId: string;
+    errorCode?: string | null;
+    errorTitle?: string | null;
+    errorDetails?: string | null;
+    failedAt: Date;
+}): Promise<void> {
+    try {
+        const data = {
+            conversationId: opts.conversationId,
+            messageId: opts.messageId,
+            type: ASSIGN_TASK_TYPE,
+            errorCode: opts.errorCode ?? null,
+            errorTitle: opts.errorTitle ?? null,
+            errorDetails: opts.errorDetails ?? null,
+            failedAt: opts.failedAt,
+            resolvedAt: null,
+        };
+        await prisma.retryFailedMessage.upsert({
+            where: { dailyTaskId: opts.dailyTaskId },
+            create: { dailyTaskId: opts.dailyTaskId, ...data },
+            update: data,
+        });
+    } catch (err) {
+        logger.error("messageLog recordFailedAssignTaskMessage failed", err);
+    }
+}
+
 /** Save outgoing message + update conversation last-sent fields. Never throws. */
 export async function saveOutgoingMessage(
     input: SaveOutgoingMessageInput,
@@ -175,6 +212,7 @@ export async function saveOutgoingMessage(
                 conversationId: conversation.id,
                 dailyTaskId: linked.dailyTaskId,
                 taskId: linked.taskId,
+                direction: MessageDirection.OUTGOING,
                 style: input.style,
                 type: input.type,
                 body,
@@ -202,6 +240,22 @@ export async function saveOutgoingMessage(
                 lastSentMessageStatus: input.status,
             },
         });
+
+        if (
+            input.status === messageStatus.FAILED &&
+            input.type === ASSIGN_TASK_TYPE &&
+            linked.dailyTaskId
+        ) {
+            await recordFailedAssignTaskMessage({
+                conversationId: conversation.id,
+                dailyTaskId: linked.dailyTaskId,
+                messageId: message.id,
+                errorCode: input.errorCode,
+                errorTitle: input.errorTitle,
+                errorDetails: input.errorDetails,
+                failedAt: now,
+            });
+        }
 
         if (
             input.status === messageStatus.FAILED &&
@@ -262,12 +316,15 @@ export async function applyWhatsAppStatusUpdate(input: {
             select: {
                 id: true,
                 conversationId: true,
+                direction: true,
+                type: true,
                 status: true,
                 dailyTaskId: true,
                 taskId: true,
             },
         });
-        if (!existing) return;
+        // Status receipts only apply to our outgoing messages; incoming rows stay READ.
+        if (!existing || existing.direction !== MessageDirection.OUTGOING) return;
 
         if (
             existing.status !== messageStatus.FAILED &&
@@ -347,6 +404,24 @@ export async function applyWhatsAppStatusUpdate(input: {
         if (
             mapped === messageStatus.FAILED &&
             existing.status !== messageStatus.FAILED &&
+            existing.type === ASSIGN_TASK_TYPE &&
+            existing.dailyTaskId
+        ) {
+            await recordFailedAssignTaskMessage({
+                conversationId: existing.conversationId,
+                dailyTaskId: existing.dailyTaskId,
+                messageId: existing.id,
+                errorCode: errorRecord?.code != null ? String(errorRecord.code) : null,
+                errorTitle: errorRecord?.title != null ? String(errorRecord.title) : null,
+                errorDetails:
+                    errorRecord?.message != null ? String(errorRecord.message) : null,
+                failedAt: at,
+            });
+        }
+
+        if (
+            mapped === messageStatus.FAILED &&
+            existing.status !== messageStatus.FAILED &&
             (existing.dailyTaskId || existing.taskId)
         ) {
             const conv = await prisma.whatsAppConversation.findUnique({
@@ -398,13 +473,95 @@ export async function markIncomingOnConversation(
             },
             update: {
                 number: normalized,
-                lastIncomingMessageId: incomingWhatsAppId ?? null,
+                // Keep values stamped by saveIncomingMessage when caller has none.
+                lastIncomingMessageId: incomingWhatsAppId ?? undefined,
                 lastIncomingMessageAt: now,
-                lastIncomingMessageType: incomingType ?? null,
+                lastIncomingMessageType: incomingType ?? undefined,
                 windowExpiresAt: new Date(now.getTime() + DAY_IN_MS),
             },
         });
     } catch (err) {
         logger.error("messageLog markIncomingOnConversation failed", err);
+    }
+}
+
+export type SaveIncomingMessageInput = {
+    userId: string;
+    number: string;
+    whatsappMessageId: string;
+    /** Meta message type, e.g. "text", "image", "button". */
+    type: string;
+    style: MessageStyle;
+    body: string;
+    /** Meta webhook timestamp (unix seconds). */
+    timestamp?: string | number | null;
+};
+
+export type SaveIncomingMessageResult = {
+    saved: boolean;
+    duplicate: boolean;
+    messageId: string | null;
+};
+
+function parseMetaTimestamp(value: string | number | null | undefined): Date | null {
+    if (value == null || value === "") return null;
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds) || seconds <= 0) return null;
+    const date = new Date(seconds * 1000);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * Save incoming (user → business) message as READ + open the 24h window.
+ * Returns duplicate=true when Meta re-delivers an already stored wamid. Never throws.
+ */
+export async function saveIncomingMessage(
+    input: SaveIncomingMessageInput,
+): Promise<SaveIncomingMessageResult> {
+    try {
+        const now = new Date();
+        const receivedAt = parseMetaTimestamp(input.timestamp) ?? now;
+        const body = input.body ?? "";
+        const wamid = input.whatsappMessageId?.trim() || null;
+        const conversation = await upsertConversation(input.userId, input.number);
+
+        const message = await prisma.message.create({
+            data: {
+                conversationId: conversation.id,
+                direction: MessageDirection.INCOMING,
+                style: input.style,
+                type: input.type,
+                body,
+                length: body.length,
+                whatsappMessageId: wamid,
+                status: messageStatus.READ,
+                recievedAt: receivedAt,
+                readAt: now,
+            },
+        });
+
+        await prisma.whatsAppConversation.update({
+            where: { id: conversation.id },
+            data: {
+                lastIncomingMessageId: message.id,
+                lastIncomingMessageAt: now,
+                lastIncomingMessageType: input.type,
+                windowExpiresAt: new Date(now.getTime() + DAY_IN_MS),
+            },
+        });
+
+        return { saved: true, duplicate: false, messageId: message.id };
+    } catch (err) {
+        if (
+            err instanceof Prisma.PrismaClientKnownRequestError &&
+            err.code === "P2002"
+        ) {
+            logger.info(
+                `messageLog duplicate incoming wamid=${input.whatsappMessageId} skipped`,
+            );
+            return { saved: false, duplicate: true, messageId: null };
+        }
+        logger.error("messageLog saveIncomingMessage failed", err);
+        return { saved: false, duplicate: false, messageId: null };
     }
 }

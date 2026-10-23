@@ -2,6 +2,7 @@ import { NextFunction, Request, Response, Router } from "express";
 import { AppError } from "../../../libraries/error-handling/AppError";
 import { authenticateToken, requireAdmin } from "../../../middlewares/jwt";
 import { normalizeSheetDate } from "../../../libraries/util/Task/readfromxl";
+import { resendFailedAssignTask } from "../../Task/Assign/service";
 import {
     taskCardDetails,
     taskTable,
@@ -17,6 +18,8 @@ import {
     conversationTable,
     messageCardDetails,
     type ConversationStatusFilter,
+    type MessageDirectionFilter,
+    type MessageTimeRange,
 } from "./messages";
 
 const TIME_RANGES: PresetTimeRange[] = [
@@ -43,6 +46,12 @@ function parseTimeRange(raw: unknown): timeRange {
         `Invalid time range. Use: ${TIME_RANGES.join(", ")} or DD-MM-YYYY`,
         400,
     );
+}
+
+/** Message tab also allows "all" (no date filter). */
+function parseMessageTimeRange(raw: unknown): MessageTimeRange {
+    if (String(raw ?? "").trim().toLowerCase() === "all") return "all";
+    return parseTimeRange(raw);
 }
 
 function parseTaskStatusFilter(raw: unknown): TaskTableStatusFilter | undefined {
@@ -163,13 +172,27 @@ export const routes = (): Router => {
         },
     );
 
+    router.post(
+        "/daily-tasks/:id/resend-assign",
+        authenticateToken,
+        requireAdmin,
+        async (req: Request, res: Response, next: NextFunction) => {
+            try {
+                const result = await resendFailedAssignTask(req.params.id);
+                return res.status(result.status).json(result);
+            } catch (error) {
+                next(error);
+            }
+        },
+    );
+
     router.get(
         "/message-cards",
         authenticateToken,
         requireAdmin,
-        async (_req: Request, res: Response, next: NextFunction) => {
+        async (req: Request, res: Response, next: NextFunction) => {
             try {
-                const result = await messageCardDetails();
+                const result = await messageCardDetails(parseMessageTimeRange(req.query.time));
                 return res.status(result.status).json(result);
             } catch (error) {
                 next(error);
@@ -187,7 +210,10 @@ export const routes = (): Router => {
                 const limit = req.query.limit ? Number(req.query.limit) : 10;
                 const search = typeof req.query.search === "string" ? req.query.search : undefined;
                 const status = parseConversationStatusFilter(req.query.status);
-                const result = await conversationTable({ page, limit, search, status });
+                const result = await conversationTable(
+                    { page, limit, search, status },
+                    parseMessageTimeRange(req.query.time),
+                );
                 return res.status(200).json({ success: true, status: 200, ...result });
             } catch (error) {
                 next(error);
@@ -204,10 +230,17 @@ export const routes = (): Router => {
                 const page = req.query.page ? Number(req.query.page) : 1;
                 const limit = req.query.limit ? Number(req.query.limit) : 10;
                 const search = typeof req.query.search === "string" ? req.query.search : undefined;
+                const rawDirection =
+                    typeof req.query.direction === "string" ? req.query.direction : "";
+                const direction: MessageDirectionFilter =
+                    rawDirection === "incoming" || rawDirection === "outgoing"
+                        ? rawDirection
+                        : "all";
                 const result = await conversationMessages(req.params.id, {
                     page,
                     limit,
                     search,
+                    direction,
                 });
                 return res.status(200).json({ success: true, status: 200, ...result });
             } catch (error) {

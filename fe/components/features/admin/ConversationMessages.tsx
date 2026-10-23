@@ -11,6 +11,7 @@ import { queryKeys } from '@/lib/query-keys';
 import {
   fetchConversationMessages,
   type ConversationMessage,
+  type MessageDirectionFilter,
   type PaginationMeta,
 } from '@/lib/services/messageService';
 import { usePageHeader } from '@/lib/utils/page-header-context';
@@ -18,6 +19,21 @@ import { ui } from '@/lib/utils/ui-classes';
 
 const TABLE_MIN_HEIGHT = 'min-h-[420px]';
 const EMPTY_ROW_HEIGHT = 'h-[380px] max-md:h-48';
+
+const DIRECTION_FILTER_OPTIONS: { value: MessageDirectionFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'incoming', label: 'Incoming' },
+  { value: 'outgoing', label: 'Outgoing' },
+];
+
+function isIncoming(msg: ConversationMessage): boolean {
+  return msg.direction === 'INCOMING';
+}
+
+/** Incoming → when user sent it; outgoing → when we sent it. */
+function getMessageTime(msg: ConversationMessage): string | null {
+  return isIncoming(msg) ? msg.recievedAt || msg.createdAt : msg.sendAt || msg.createdAt;
+}
 
 function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -65,6 +81,36 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`text-sm font-semibold capitalize ${getMessageStatusClassName(status)}`}>
       {status.toLowerCase()}
     </span>
+  );
+}
+
+function DirectionBadge({ direction }: { direction: ConversationMessage['direction'] }) {
+  if (direction === 'INCOMING') {
+    return <span className="text-sm font-semibold text-sky-600">Incoming</span>;
+  }
+  return <span className="text-sm font-semibold text-violet-600">Outgoing</span>;
+}
+
+function DirectionFilterBar({
+  value,
+  onChange,
+}: {
+  value: MessageDirectionFilter;
+  onChange: (value: MessageDirectionFilter) => void;
+}) {
+  return (
+    <div className={ui.tabBar}>
+      {DIRECTION_FILTER_OPTIONS.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className={value === option.value ? ui.tabActive : ui.tabInactive}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -145,6 +191,7 @@ export default function ConversationMessages({
   const { setBreadcrumb, setOnBack } = usePageHeader();
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const [direction, setDirection] = useState<MessageDirectionFilter>('all');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [detail, setDetail] = useState<ConversationMessage | null>(null);
@@ -156,19 +203,21 @@ export default function ConversationMessages({
 
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, direction]);
 
   const query = useQuery({
     queryKey: queryKeys.dashboard.conversationMessages(conversationId, {
       page,
       limit,
       search,
+      direction,
     }),
     queryFn: () =>
       fetchConversationMessages(conversationId, {
         page,
         limit,
         search: search || undefined,
+        direction,
       }),
     ...cachedQueryOptions,
   });
@@ -192,7 +241,7 @@ export default function ConversationMessages({
     <div className="animate-fade-in min-h-[calc(100dvh-11rem)] max-md:min-h-0 flex flex-col w-full">
       <div className="space-y-6 max-md:space-y-4 flex flex-col flex-1 min-h-0">
         {conversation && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
             <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">User</p>
               <p className="mt-1 text-base font-semibold text-gray-900 truncate">
@@ -213,9 +262,21 @@ export default function ConversationMessages({
               </div>
             </div>
             <div className="rounded-xl border border-violet-100 bg-violet-50/30 p-4 shadow-sm">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Last type</p>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Last sent</p>
               <p className="mt-1 text-base font-semibold text-violet-700 truncate">
                 {conversation.lastSentMessageType || '—'}
+              </p>
+              <p className="text-sm text-gray-500">{formatDateTime(conversation.lastSentMessageAt)}</p>
+            </div>
+            <div className="rounded-xl border border-sky-100 bg-sky-50/30 p-4 shadow-sm">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                Last incoming
+              </p>
+              <p className="mt-1 text-base font-semibold text-sky-700 truncate">
+                {conversation.lastIncomingMessageType || '—'}
+              </p>
+              <p className="text-sm text-gray-500">
+                {formatDateTime(conversation.lastIncomingMessageAt)}
               </p>
             </div>
             <div
@@ -232,7 +293,10 @@ export default function ConversationMessages({
         )}
 
         <div className="flex flex-col flex-1 min-h-0">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-3 mb-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+            <div className="max-md:w-full max-md:overflow-x-auto touch-scroll">
+              <DirectionFilterBar value={direction} onChange={setDirection} />
+            </div>
             <div className="relative w-full md:w-72">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
@@ -253,26 +317,36 @@ export default function ConversationMessages({
               >
                 <table className="w-full text-base table-fixed">
                   <colgroup>
-                    <col style={{ width: '14%' }} />
-                    <col style={{ width: '12%' }} />
-                    <col style={{ width: '36%' }} />
-                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '11%' }} />
+                    <col style={{ width: '13%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '30%' }} />
+                    <col style={{ width: '10%' }} />
                     <col style={{ width: '18%' }} />
                     <col style={{ width: '8%' }} />
                   </colgroup>
                   <thead>
                     <tr className="bg-gray-50 text-left text-sm uppercase tracking-wide text-gray-500">
+                      <th className="px-4 py-3">Direction</th>
                       <th className="px-4 py-3">Type</th>
                       <th className="px-4 py-3">Style</th>
                       <th className="px-4 py-3">Body</th>
                       <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Sent At</th>
+                      <th className="px-4 py-3">Time</th>
                       <th className="px-2 py-3" aria-label="View details" />
                     </tr>
                   </thead>
                   <tbody>
                     {messages.map((msg) => (
-                      <tr key={msg.id} className="border-t border-gray-100 hover:bg-gray-50/50">
+                      <tr
+                        key={msg.id}
+                        className={`border-t border-gray-100 hover:bg-gray-50/50 ${
+                          isIncoming(msg) ? 'bg-sky-50/30' : ''
+                        }`}
+                      >
+                        <td className="px-4 py-3">
+                          <DirectionBadge direction={msg.direction} />
+                        </td>
                         <td className="px-4 py-3 font-medium text-gray-900 truncate">{msg.type}</td>
                         <td className="px-4 py-3 text-gray-600 capitalize">
                           {msg.style.toLowerCase()}
@@ -282,7 +356,7 @@ export default function ConversationMessages({
                           <StatusBadge status={msg.status} />
                         </td>
                         <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                          {formatDateTime(msg.sendAt || msg.createdAt)}
+                          {formatDateTime(getMessageTime(msg))}
                         </td>
                         <td className="px-2 py-3 text-center">
                           <button
@@ -298,7 +372,7 @@ export default function ConversationMessages({
                     {!messages.length && (
                       <tr>
                         <td
-                          colSpan={6}
+                          colSpan={7}
                           className={`${EMPTY_ROW_HEIGHT} align-middle text-center text-gray-400`}
                         >
                           No messages in this conversation
@@ -320,15 +394,22 @@ export default function ConversationMessages({
                       key={msg.id}
                       type="button"
                       onClick={() => setDetail(msg)}
-                      className="w-full rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm"
+                      className={`w-full rounded-xl border p-4 text-left shadow-sm ${
+                        isIncoming(msg) ? 'border-sky-100 bg-sky-50/40' : 'border-gray-200 bg-white'
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <p className="font-semibold text-gray-900 truncate">{msg.type}</p>
+                        <div className="min-w-0">
+                          <DirectionBadge direction={msg.direction} />
+                          <p className="font-semibold text-gray-900 truncate">{msg.type}</p>
+                        </div>
                         <StatusBadge status={msg.status} />
                       </div>
-                      <p className="mt-2 text-sm text-gray-600 line-clamp-3">{msg.body || '—'}</p>
+                      <p className="mt-2 text-sm text-gray-600 line-clamp-3 whitespace-pre-line">
+                        {msg.body || '—'}
+                      </p>
                       <p className="mt-2 text-xs text-gray-400">
-                        {formatDateTime(msg.sendAt || msg.createdAt)} · {msg.style.toLowerCase()}
+                        {formatDateTime(getMessageTime(msg))} · {msg.style.toLowerCase()}
                       </p>
                     </button>
                   ))
@@ -369,6 +450,11 @@ export default function ConversationMessages({
 
             <ModalDetailGrid>
               <ModalDetailRow
+                label="Direction"
+                value={isIncoming(detail) ? 'Incoming' : 'Outgoing'}
+                valueClassName={isIncoming(detail) ? 'text-sky-600' : 'text-violet-600'}
+              />
+              <ModalDetailRow
                 label="Type"
                 value={detail.type}
                 valueClassName="text-violet-700"
@@ -390,48 +476,65 @@ export default function ConversationMessages({
                 valueClassName="text-gray-600 font-mono text-sm normal-case"
               />
               <ModalDetailRow label="Created At" value={formatDateTime(detail.createdAt)} />
-              <ModalDetailRow
-                label="Sent At"
-                value={formatDateTime(detail.sendAt)}
-                valueClassName="text-brand-primary"
-              />
-              <ModalDetailRow
-                label="Delivered At"
-                value={formatDateTime(detail.deliveredAt)}
-                valueClassName="text-brand-primary"
-              />
-              <ModalDetailRow
-                label="Read At"
-                value={formatDateTime(detail.readAt)}
-                valueClassName="text-green-600"
-              />
-              <ModalDetailRow
-                label="Failed At"
-                value={formatDateTime(detail.failedAt)}
-                valueClassName="text-red-600"
-              />
-              <ModalDetailRow
-                label="Error Code"
-                value={detail.errorCode || '—'}
-                valueClassName="text-red-600"
-              />
-              <ModalDetailRow
-                label="Error Title"
-                value={detail.errorTitle || '—'}
-                valueClassName="text-red-600"
-                fullWidth
-              />
-              <ModalDetailRow
-                label="Error Details"
-                value={detail.errorDetails || '—'}
-                fullWidth
-                valueClassName="text-red-600"
-              />
+              {isIncoming(detail) ? (
+                <>
+                  <ModalDetailRow
+                    label="Received At"
+                    value={formatDateTime(detail.recievedAt)}
+                    valueClassName="text-sky-600"
+                  />
+                  <ModalDetailRow
+                    label="Read At"
+                    value={formatDateTime(detail.readAt)}
+                    valueClassName="text-green-600"
+                  />
+                </>
+              ) : (
+                <>
+                  <ModalDetailRow
+                    label="Sent At"
+                    value={formatDateTime(detail.sendAt)}
+                    valueClassName="text-brand-primary"
+                  />
+                  <ModalDetailRow
+                    label="Delivered At"
+                    value={formatDateTime(detail.deliveredAt)}
+                    valueClassName="text-brand-primary"
+                  />
+                  <ModalDetailRow
+                    label="Read At"
+                    value={formatDateTime(detail.readAt)}
+                    valueClassName="text-green-600"
+                  />
+                  <ModalDetailRow
+                    label="Failed At"
+                    value={formatDateTime(detail.failedAt)}
+                    valueClassName="text-red-600"
+                  />
+                  <ModalDetailRow
+                    label="Error Code"
+                    value={detail.errorCode || '—'}
+                    valueClassName="text-red-600"
+                  />
+                  <ModalDetailRow
+                    label="Error Title"
+                    value={detail.errorTitle || '—'}
+                    valueClassName="text-red-600"
+                    fullWidth
+                  />
+                  <ModalDetailRow
+                    label="Error Details"
+                    value={detail.errorDetails || '—'}
+                    fullWidth
+                    valueClassName="text-red-600"
+                  />
+                </>
+              )}
               <ModalDetailRow
                 label="Body"
                 value={detail.body || '—'}
                 fullWidth
-                valueClassName="text-gray-800 normal-case"
+                valueClassName="text-gray-800 normal-case whitespace-pre-line"
               />
             </ModalDetailGrid>
           </div>

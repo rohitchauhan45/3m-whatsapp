@@ -1,4 +1,4 @@
-import { Role } from "@prisma/client";
+import { MessageDirection, Role } from "@prisma/client";
 import { prisma } from "../../libraries/db";
 import logger from "../../libraries/log/logger";
 import { AppError } from "../../libraries/error-handling/AppError";
@@ -119,7 +119,11 @@ async function sendManagerReminderTemplate(manager: ManagerContact): Promise<boo
 
 async function getLastManagerReminderAt(conversationId: string): Promise<Date | null> {
     const last = await prisma.message.findFirst({
-        where: { conversationId, type: MANAGER_REMINDER_TYPE },
+        where: {
+            conversationId,
+            direction: MessageDirection.OUTGOING,
+            type: MANAGER_REMINDER_TYPE,
+        },
         orderBy: { createdAt: "desc" },
         select: { createdAt: true, sendAt: true },
     });

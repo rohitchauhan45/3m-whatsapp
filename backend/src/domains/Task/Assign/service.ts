@@ -1,4 +1,11 @@
-import { AcceptStatus, Role, TaskFinalStatus, TaskStaus, onTrackStatus } from "@prisma/client";
+import {
+    AcceptStatus,
+    Role,
+    TaskFinalStatus,
+    TaskStaus,
+    messageStatus,
+    onTrackStatus,
+} from "@prisma/client";
 import { prisma } from "../../../libraries/db";
 import logger from "../../../libraries/log/logger";
 import { AppError } from "../../../libraries/error-handling/AppError";
@@ -250,6 +257,142 @@ export const assignTask = async (managerId?: string): Promise<TaskResult> => {
         throw new AppError(`Error in Assign task to user`, error.message)
     }
 
+};
+
+const resendAssignInFlight = new Set<string>();
+
+/**
+ * Admin re-send of a failed "assignTask" message (RetryFailedMessage) while the user's
+ * 24h window is open — session message (no template), same body/buttons as assignTask Case 2.
+ */
+export const resendFailedAssignTask = async (
+    dailyTaskId: string,
+): Promise<{ success: boolean; status: number; message: string }> => {
+    const id = dailyTaskId?.trim();
+    if (!id) throw new AppError("Validation error", "dailyTaskId is required", 400);
+
+    if (resendAssignInFlight.has(id)) {
+        throw new AppError("Conflict", "Re-send already in progress for this daily task", 409);
+    }
+    resendAssignInFlight.add(id);
+
+    try {
+        const dailyTask = await prisma.dailyTask.findFirst({
+            where: { id, deletedAt: null },
+            include: {
+                user: { select: { id: true, name: true, number: true, deletedAt: true } },
+                tasks: { where: { deletedAt: null } },
+                retryFailedMessage: true,
+            },
+        });
+
+        if (!dailyTask) throw new AppError("Not found", "Daily task not found", 404);
+
+        const retry = dailyTask.retryFailedMessage;
+        if (!retry || retry.resolvedAt) {
+            throw new AppError("Validation error", "No failed assign message to re-send", 400);
+        }
+        if (dailyTask.deliveryStatus !== messageStatus.FAILED) {
+            throw new AppError(
+                "Conflict",
+                "Assign message is not in failed state anymore",
+                409,
+            );
+        }
+
+        const user = dailyTask.user;
+        const phone = user?.number?.trim() ?? "";
+        if (!user || user.deletedAt || !phone) {
+            throw new AppError("Validation error", "User is deleted or has no phone number", 400);
+        }
+        if (dailyTask.tasks.length === 0) {
+            throw new AppError("Validation error", "Daily task has no tasks to send", 400);
+        }
+
+        const conversation = await prisma.whatsAppConversation.findUnique({
+            where: { userId: user.id },
+            select: { windowExpiresAt: true },
+        });
+        const now = new Date();
+        const hasOpenWindow =
+            conversation?.windowExpiresAt != null &&
+            conversation.windowExpiresAt.getTime() > now.getTime();
+        if (!hasOpenWindow) {
+            throw new AppError(
+                "Validation error",
+                "User's WhatsApp window is closed — cannot send a non-template message",
+                400,
+            );
+        }
+
+        // Clear FAILED so messageLog links this send as the DailyTask's delivery message again.
+        // sendAt marker keeps the assignTask cron (deliveryStatus null + sendAt null) from picking it up.
+        const claimed = await prisma.dailyTask.updateMany({
+            where: { id, deliveryStatus: messageStatus.FAILED },
+            data: { deliveryStatus: null, sendAt: now },
+        });
+        if (claimed.count === 0) {
+            throw new AppError("Conflict", "Assign message is not in failed state anymore", 409);
+        }
+
+        const taskItems = dailyTask.tasks.map((t) => ({
+            name: t.name,
+            rawStartTime: t.rawStartTime,
+            rawEndTime: t.rawEndTime,
+        }));
+        const { message: body } = buildAssignInteractiveMessage(user.name, taskItems);
+
+        const result = await sendWhatsAppButtons({
+            number: phone,
+            message: body,
+            type: "assignTask",
+            dailyTaskId: dailyTask.id,
+            buttons: [
+                { title: "Accept", id: `accept_${dailyTask.id}` },
+                { title: "Decline", id: `decline_${dailyTask.id}` },
+            ],
+        });
+
+        const attemptAt = new Date();
+
+        if (result.success) {
+            await prisma.dailyTask.update({
+                where: { id: dailyTask.id },
+                data: { status: AcceptStatus.remaining },
+            });
+            await prisma.retryFailedMessage.update({
+                where: { dailyTaskId: dailyTask.id },
+                data: {
+                    resolvedAt: attemptAt,
+                    lastRetryAt: attemptAt,
+                    retryCount: { increment: 1 },
+                },
+            });
+            logger.info(`assign-task re-send success dailyTaskId=${dailyTask.id} number=${phone}`);
+            return { success: true, status: 200, message: "Assign task message re-sent" };
+        }
+
+        // Restore FAILED if the send exited before messageLog stamped it (e.g. invalid number / env).
+        await prisma.dailyTask.updateMany({
+            where: { id: dailyTask.id, deliveryStatus: null },
+            data: { deliveryStatus: messageStatus.FAILED, sendAt: null },
+        });
+        await prisma.retryFailedMessage.update({
+            where: { dailyTaskId: dailyTask.id },
+            data: { lastRetryAt: attemptAt, retryCount: { increment: 1 } },
+        });
+        logger.warn(
+            `assign-task re-send failed dailyTaskId=${dailyTask.id} number=${phone} detail=${result.message}`,
+        );
+        return { success: false, status: 502, message: "Re-send failed, please try again later" };
+    } catch (error) {
+        if (error instanceof AppError) throw error;
+        logger.error("Error in re-send failed assign task", error);
+        await notifyAdminError("re-send failed assign task");
+        throw new AppError("Error in re-send failed assign task", (error as Error).message);
+    } finally {
+        resendAssignInFlight.delete(id);
+    }
 };
 
 export const updateTaskAcceptFromWhatsApp = async (

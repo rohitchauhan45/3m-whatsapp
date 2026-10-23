@@ -44,6 +44,7 @@ import {
   type TaskTableUserGroup,
   type TaskTableUserTask,
   type DashboardDailyTask,
+  resendFailedAssign,
   fetchTaskCards,
   fetchTaskTable,
   fetchUserCards,
@@ -297,6 +298,45 @@ function TableFilters({
         />
       </div>
     </div>
+  );
+}
+
+/** Re-send failed assignTask message — only while the user's 24h window is open. */
+function ResendAssignButton({
+  row,
+  sendingId,
+  onResend,
+}: {
+  row: DashboardDailyTask;
+  sendingId: string | null;
+  onResend: (row: DashboardDailyTask) => void;
+}) {
+  const retry = row.assignRetry;
+  if (!retry) return null;
+
+  if (!retry.windowOpen) {
+    return (
+      <span
+        className="text-xs font-medium text-gray-400"
+        title="User's WhatsApp window is closed — re-send available after the user messages"
+      >
+        Window closed
+      </span>
+    );
+  }
+
+  const isSending = sendingId === row.id;
+  return (
+    <button
+      type="button"
+      onClick={() => onResend(row)}
+      disabled={sendingId !== null}
+      title={retry.errorTitle ? `Last error: ${retry.errorTitle}` : 'Re-send assign task message'}
+      className="inline-flex items-center gap-1 rounded-full border border-brand-primary/30 px-2.5 py-1 text-xs font-semibold text-brand-primary hover:bg-brand-primary/5 disabled:opacity-50"
+    >
+      {isSending && <Loader2 size={12} className="animate-spin" />}
+      Send
+    </button>
   );
 }
 
@@ -565,6 +605,8 @@ function UserTableMobileList({
   showUserSentCol,
   onViewUser,
   onGoToTasks,
+  resendingAssignId,
+  onResendAssign,
 }: Readonly<{
   rows: DashboardDailyTask[];
   isUserAllFilter: boolean;
@@ -576,6 +618,8 @@ function UserTableMobileList({
   showUserSentCol: boolean;
   onViewUser: (row: DashboardDailyTask) => void;
   onGoToTasks: (name: string, number: string) => void;
+  resendingAssignId: string | null;
+  onResendAssign: (row: DashboardDailyTask) => void;
 }>) {
   if (rows.length === 0) {
     return (
@@ -624,11 +668,18 @@ function UserTableMobileList({
             {showUserSentCol && (
               <div className="flex items-start justify-between gap-3 text-sm">
                 <span className="shrink-0 text-gray-500">Delivery</span>
-                <span
-                  className={`font-semibold capitalize ${getDeliveryStatusClassName(dt.deliveryStatus)}`}
-                >
-                  {formatDeliveryStatusLabel(dt.deliveryStatus)}
-                </span>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <span
+                    className={`font-semibold capitalize ${getDeliveryStatusClassName(dt.deliveryStatus)}`}
+                  >
+                    {formatDeliveryStatusLabel(dt.deliveryStatus)}
+                  </span>
+                  <ResendAssignButton
+                    row={dt}
+                    sendingId={resendingAssignId}
+                    onResend={onResendAssign}
+                  />
+                </div>
               </div>
             )}
             {isUserAllFilter && (
@@ -828,6 +879,30 @@ export default function AdminDashboard({
     },
     onError: (err: Error) => showError(err.message),
   });
+
+  const resendAssignMutation = useMutation({
+    mutationFn: (row: DashboardDailyTask) => resendFailedAssign(row.id),
+    onSuccess: (res) => {
+      invalidateDashboardQueries(queryClient);
+      if (!res.success) {
+        showError(res.message || 'Failed to re-send message');
+        return;
+      }
+      setUserDetailModal(null);
+      showToast(res.message || 'Message sent', 'success');
+    },
+    onError: (err) => {
+      invalidateDashboardQueries(queryClient);
+      showError(getApiErrorMessage(err, 'Failed to re-send message'));
+    },
+  });
+  const resendingAssignId = resendAssignMutation.isPending
+    ? (resendAssignMutation.variables?.id ?? null)
+    : null;
+  const handleResendAssign = (row: DashboardDailyTask) => {
+    if (resendAssignMutation.isPending) return;
+    resendAssignMutation.mutate(row);
+  };
 
   const editTaskMutation = useMutation({
     mutationFn: (form: TaskEditForm) =>
@@ -1558,11 +1633,18 @@ export default function AdminDashboard({
                               )}
                               {showUserSentCol && (
                                 <td className="px-4 py-3">
-                                  <span
-                                    className={`text-sm font-semibold capitalize ${getDeliveryStatusClassName(dt.deliveryStatus)}`}
-                                  >
-                                    {formatDeliveryStatusLabel(dt.deliveryStatus)}
-                                  </span>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span
+                                      className={`text-sm font-semibold capitalize ${getDeliveryStatusClassName(dt.deliveryStatus)}`}
+                                    >
+                                      {formatDeliveryStatusLabel(dt.deliveryStatus)}
+                                    </span>
+                                    <ResendAssignButton
+                                      row={dt}
+                                      sendingId={resendingAssignId}
+                                      onResend={handleResendAssign}
+                                    />
+                                  </div>
                                 </td>
                               )}
                               {isUserAllFilter && (
@@ -1617,6 +1699,8 @@ export default function AdminDashboard({
                     showUserSentCol={showUserSentCol}
                     onViewUser={setUserDetailModal}
                     onGoToTasks={goToUserTasks}
+                    resendingAssignId={resendingAssignId}
+                    onResendAssign={handleResendAssign}
                   />
                   {userTableQuery.data?.pagination && (
                     <PaginationBar
@@ -1677,6 +1761,21 @@ export default function AdminDashboard({
               value={formatDeliveryStatusLabel(userDetailModal.deliveryStatus)}
               valueClassName={getDeliveryStatusClassName(userDetailModal.deliveryStatus)}
             />
+            {userDetailModal.assignRetry && (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-red-100 bg-red-50/40 px-4 py-3 sm:col-span-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-500">Assign message failed</p>
+                  <p className="text-sm font-semibold text-red-600 break-words">
+                    {userDetailModal.assignRetry.errorTitle || 'Delivery failed'}
+                  </p>
+                </div>
+                <ResendAssignButton
+                  row={userDetailModal}
+                  sendingId={resendingAssignId}
+                  onResend={handleResendAssign}
+                />
+              </div>
+            )}
             <ModalDetailRow
               label="Decline Reason"
               value={userDetailModal.remarkReason || '—'}

@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { TimeRange } from '@/lib/services/dashboardService';
+import type { MessageTimeRange } from '@/lib/services/messageService';
 
 export const queryKeys = {
   adminTasks: ['admin-tasks'] as const,
@@ -13,7 +14,7 @@ export const queryKeys = {
     userCards: (time: TimeRange) => ['dashboard', 'user-cards', time] as const,
     userTable: (params: Record<string, unknown>) =>
       ['dashboard', 'user-table', params] as const,
-    messageCards: ['dashboard', 'message-cards'] as const,
+    messageCards: (time: MessageTimeRange) => ['dashboard', 'message-cards', time] as const,
     messageTable: (params: Record<string, unknown>) =>
       ['dashboard', 'message-table', params] as const,
     conversationMessages: (conversationId: string, params: Record<string, unknown>) =>

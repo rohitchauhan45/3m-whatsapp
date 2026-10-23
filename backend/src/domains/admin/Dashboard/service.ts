@@ -1,4 +1,11 @@
-import { DailyTask, Prisma, Task, TaskFinalStatus, TaskStaus } from "@prisma/client";
+import {
+    DailyTask,
+    Prisma,
+    Task,
+    TaskFinalStatus,
+    TaskStaus,
+    messageStatus,
+} from "@prisma/client";
 import { prisma } from "../../../libraries/db";
 import { AppError } from "../../../libraries/error-handling/AppError";
 import logger from "../../../libraries/log/logger";
@@ -59,8 +66,23 @@ export type TaskTableUserGroup = {
     tasks: TaskTableUserTask[];
 };
 
+/** Pending failed "assignTask" message for this DailyTask (RetryFailedMessage). */
+export type AssignRetryInfo = {
+    id: string;
+    failedAt: Date;
+    errorTitle: string | null;
+    retryCount: number;
+    /** User's 24h window open → admin can re-send without template. */
+    windowOpen: boolean;
+};
+
+export type UserTableRow = DailyTask & {
+    user?: { name: string; number: string };
+    assignRetry: AssignRetryInfo | null;
+};
+
 interface UserTablePaginationResult {
-    dailyTasks: DailyTask[];
+    dailyTasks: UserTableRow[];
     pagination: {
         page: number;
         limit: number;
@@ -387,16 +409,55 @@ export const usertable = async (
                 take: limit,
                 orderBy: { createdAt: "asc" },
                 include: {
-                    user: { select: { name: true, number: true } },
+                    user: {
+                        select: {
+                            name: true,
+                            number: true,
+                            conversation: { select: { windowExpiresAt: true }, take: 1 },
+                        },
+                    },
+                    retryFailedMessage: {
+                        select: {
+                            id: true,
+                            failedAt: true,
+                            errorTitle: true,
+                            retryCount: true,
+                            resolvedAt: true,
+                        },
+                    },
                 },
             }),
             prisma.dailyTask.count({ where }),
         ]);
 
         const totalPages = Math.ceil(total / limit);
+        const now = Date.now();
+
+        const rows: UserTableRow[] = dailyTasks.map(({ user, retryFailedMessage, ...dt }) => {
+            const windowExpiresAt = user?.conversation[0]?.windowExpiresAt ?? null;
+            const pendingRetry =
+                retryFailedMessage &&
+                !retryFailedMessage.resolvedAt &&
+                dt.deliveryStatus === messageStatus.FAILED
+                    ? retryFailedMessage
+                    : null;
+            return {
+                ...dt,
+                user: user ? { name: user.name, number: user.number } : undefined,
+                assignRetry: pendingRetry
+                    ? {
+                          id: pendingRetry.id,
+                          failedAt: pendingRetry.failedAt,
+                          errorTitle: pendingRetry.errorTitle,
+                          retryCount: pendingRetry.retryCount,
+                          windowOpen: windowExpiresAt != null && windowExpiresAt.getTime() > now,
+                      }
+                    : null,
+            };
+        });
 
         return {
-            dailyTasks: dailyTasks as DailyTask[],
+            dailyTasks: rows,
             pagination: {
                 page,
                 limit,

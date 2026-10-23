@@ -1,11 +1,29 @@
-import { messageStatus, Prisma } from "@prisma/client";
+import { MessageDirection, messageStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../../libraries/db";
 import { AppError } from "../../../libraries/error-handling/AppError";
 import logger from "../../../libraries/log/logger";
 import { notifyAdminError } from "../../../libraries/util/notifyAdminError";
+import { convertTimeRangeintoDate } from "../../../libraries/util/Admin/timing";
+import type { timeRange } from "./service";
 
 export type ConversationStatusFilter = "all" | "open" | "expired" | "failed";
 export type ConversationDirection = "incoming" | "outgoing";
+export type MessageDirectionFilter = "all" | ConversationDirection;
+/** Same presets as task/user tabs, plus "all" (no date filter). */
+export type MessageTimeRange = timeRange | "all";
+
+/** Message.createdAt filter for the range; null = no date filter ("all"). */
+function buildMessageDateWhere(time: MessageTimeRange): Prisma.MessageWhereInput | null {
+    if (time === "all") return null;
+    return { createdAt: convertTimeRangeintoDate(time) };
+}
+
+/** Conversations with at least one message in the range. */
+function buildConversationTimeWhere(
+    messageDateWhere: Prisma.MessageWhereInput | null,
+): Prisma.WhatsAppConversationWhereInput {
+    return messageDateWhere ? { messages: { some: messageDateWhere } } : {};
+}
 
 /** Compare last incoming vs last sent timestamps → which side was most recent. */
 function resolveLastDirection(
@@ -39,24 +57,42 @@ function buildConversationStatusWhere(
     }
 }
 
-export const messageCardDetails = async () => {
+export const messageCardDetails = async (time: MessageTimeRange = "today") => {
     try {
         const now = new Date();
+        const messageDateWhere = buildMessageDateWhere(time);
+        const messageWhere: Prisma.MessageWhereInput = messageDateWhere ?? {};
+        const conversationWhere = buildConversationTimeWhere(messageDateWhere);
 
-        const [totalConversations, windowOpen, windowExpired, totalMessages, failedMessages] =
-            await Promise.all([
-                prisma.whatsAppConversation.count(),
+        const [
+            totalConversations,
+            windowOpen,
+            windowExpired,
+            totalMessages,
+            failedMessages,
+            incomingMessages,
+            outgoingMessages,
+        ] = await Promise.all([
+                prisma.whatsAppConversation.count({ where: conversationWhere }),
                 prisma.whatsAppConversation.count({
-                    where: { windowExpiresAt: { gt: now } },
+                    where: {
+                        AND: [conversationWhere, buildConversationStatusWhere("open", now)],
+                    },
                 }),
                 prisma.whatsAppConversation.count({
                     where: {
-                        OR: [{ windowExpiresAt: null }, { windowExpiresAt: { lte: now } }],
+                        AND: [conversationWhere, buildConversationStatusWhere("expired", now)],
                     },
                 }),
-                prisma.message.count(),
+                prisma.message.count({ where: messageWhere }),
                 prisma.message.count({
-                    where: { status: messageStatus.FAILED },
+                    where: { ...messageWhere, status: messageStatus.FAILED },
+                }),
+                prisma.message.count({
+                    where: { ...messageWhere, direction: MessageDirection.INCOMING },
+                }),
+                prisma.message.count({
+                    where: { ...messageWhere, direction: MessageDirection.OUTGOING },
                 }),
             ]);
 
@@ -69,6 +105,8 @@ export const messageCardDetails = async () => {
                 windowExpired,
                 totalMessages,
                 failedMessages,
+                incomingMessages,
+                outgoingMessages,
             },
         };
     } catch (error) {
@@ -88,6 +126,7 @@ export const conversationTable = async (
         search?: string;
         status?: ConversationStatusFilter;
     } = {},
+    time: MessageTimeRange = "today",
 ) => {
     try {
         const now = new Date();
@@ -96,9 +135,11 @@ export const conversationTable = async (
         const skip = (page - 1) * limit;
         const searchTerm = query.search?.trim() || "";
         const statusFilter = query.status ?? "all";
+        const messageDateWhere = buildMessageDateWhere(time);
 
         const where: Prisma.WhatsAppConversationWhereInput = {
             AND: [
+                buildConversationTimeWhere(messageDateWhere),
                 buildConversationStatusWhere(statusFilter, now),
                 ...(searchTerm
                     ? [
@@ -150,7 +191,11 @@ export const conversationTable = async (
                             role: true,
                         },
                     },
-                    _count: { select: { messages: true } },
+                    _count: {
+                        select: {
+                            messages: messageDateWhere ? { where: messageDateWhere } : true,
+                        },
+                    },
                 },
             }),
             prisma.whatsAppConversation.count({ where }),
@@ -205,13 +250,24 @@ export const conversationTable = async (
 
 export const conversationMessages = async (
     conversationId: string,
-    query: { page?: number; limit?: number; search?: string } = {},
+    query: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        direction?: MessageDirectionFilter;
+    } = {},
 ) => {
     try {
         const page = query.page && query.page > 0 ? query.page : 1;
         const limit = query.limit && query.limit > 0 ? query.limit : 10;
         const skip = (page - 1) * limit;
         const searchTerm = query.search?.trim() || "";
+        const directionWhere =
+            query.direction === "incoming"
+                ? MessageDirection.INCOMING
+                : query.direction === "outgoing"
+                  ? MessageDirection.OUTGOING
+                  : undefined;
 
         const conversation = await prisma.whatsAppConversation.findUnique({
             where: { id: conversationId },
@@ -239,6 +295,7 @@ export const conversationMessages = async (
 
         const messageWhere: Prisma.MessageWhereInput = {
             conversationId,
+            ...(directionWhere ? { direction: directionWhere } : {}),
             ...(searchTerm
                 ? {
                       OR: [
@@ -275,6 +332,7 @@ export const conversationMessages = async (
                 windowExpiresAt: conversation.windowExpiresAt,
                 windowOpen,
                 lastIncomingMessageAt: conversation.lastIncomingMessageAt,
+                lastIncomingMessageType: conversation.lastIncomingMessageType,
                 lastSentMessageAt: conversation.lastSentMessageAt,
                 lastSentMessageType: conversation.lastSentMessageType,
                 lastSentMessageStatus: conversation.lastSentMessageStatus,

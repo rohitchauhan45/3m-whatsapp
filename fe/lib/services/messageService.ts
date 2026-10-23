@@ -1,7 +1,23 @@
 import { apiClient } from '@/lib/api/client';
-import type { PaginationMeta } from '@/lib/services/dashboardService';
+import {
+  getTimeRangeOptions,
+  type PaginationMeta,
+  type TimeRange,
+} from '@/lib/services/dashboardService';
 
 export type ConversationStatusFilter = 'all' | 'open' | 'expired' | 'failed';
+
+/** Same presets as task/user tabs, plus "all" (no date filter). */
+export type MessageTimeRange = TimeRange | 'all';
+
+export function getMessageTimeRangeOptions(
+  current?: MessageTimeRange,
+): { value: MessageTimeRange; label: string }[] {
+  return [
+    ...getTimeRangeOptions(current === 'all' ? undefined : current),
+    { value: 'all', label: 'All' },
+  ];
+}
 
 export type MessageCardData = {
   totalConversations: number;
@@ -9,9 +25,13 @@ export type MessageCardData = {
   windowExpired: number;
   totalMessages: number;
   failedMessages: number;
+  incomingMessages: number;
+  outgoingMessages: number;
 };
 
 export type ConversationDirection = 'incoming' | 'outgoing';
+export type MessageDirection = 'INCOMING' | 'OUTGOING';
+export type MessageDirectionFilter = 'all' | ConversationDirection;
 
 export type ConversationRow = {
   id: string;
@@ -36,6 +56,7 @@ export type ConversationRow = {
 
 export type ConversationMessage = {
   id: string;
+  direction: MessageDirection;
   style: string;
   type: string;
   body: string;
@@ -47,6 +68,7 @@ export type ConversationMessage = {
   deliveredAt: string | null;
   readAt: string | null;
   failedAt: string | null;
+  recievedAt: string | null;
   errorCode: string | null;
   errorTitle: string | null;
   errorDetails: string | null;
@@ -62,6 +84,7 @@ export type ConversationDetail = {
   windowExpiresAt: string | null;
   windowOpen: boolean;
   lastIncomingMessageAt: string | null;
+  lastIncomingMessageType: string | null;
   lastSentMessageAt: string | null;
   lastSentMessageType: string | null;
   lastSentMessageStatus: string | null;
@@ -72,19 +95,22 @@ export type ConversationTableQuery = {
   limit?: number;
   search?: string;
   status?: ConversationStatusFilter;
+  time?: MessageTimeRange;
 };
 
 export type ConversationMessagesQuery = {
   page?: number;
   limit?: number;
   search?: string;
+  direction?: MessageDirectionFilter;
 };
 
 export type { PaginationMeta };
 
-export async function fetchMessageCards() {
+export async function fetchMessageCards(time: MessageTimeRange) {
   const { data } = await apiClient.get<{ data: MessageCardData }>(
     '/admin/dashboard/message-cards',
+    { params: { time } },
   );
   return data.data;
 }

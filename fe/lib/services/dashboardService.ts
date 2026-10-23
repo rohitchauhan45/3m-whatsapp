@@ -114,6 +114,17 @@ export interface DashboardDailyTask {
   deliveryStatus: string | null;
   date: string;
   user?: { name: string; number: string };
+  /** Pending failed "assignTask" message; null when nothing to re-send. */
+  assignRetry: AssignRetryInfo | null;
+}
+
+export interface AssignRetryInfo {
+  id: string;
+  failedAt: string;
+  errorTitle: string | null;
+  retryCount: number;
+  /** User's 24h window open → re-send allowed (non-template). */
+  windowOpen: boolean;
 }
 
 export interface PaginationMeta {
@@ -171,6 +182,13 @@ export async function fetchTaskTable(query: TableQuery) {
     groupedByUser?: TaskTableUserGroup[];
     pagination: PaginationMeta;
   }>('/admin/dashboard/task-table', { params: query });
+  return data;
+}
+
+export async function resendFailedAssign(dailyTaskId: string) {
+  const { data } = await apiClient.post<{ success: boolean; status: number; message: string }>(
+    `/admin/dashboard/daily-tasks/${dailyTaskId}/resend-assign`,
+  );
   return data;
 }
 
