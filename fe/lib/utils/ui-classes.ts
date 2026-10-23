@@ -13,6 +13,10 @@ export const ui = {
     'inline-flex items-center justify-center gap-2 px-8 py-3 bg-brand-primary text-white rounded-xl text-sm font-medium hover:bg-brand-primaryDark transition-colors shadow-blue-sm max-md:min-h-11',
   btnGhostBlue:
     'inline-flex items-center gap-1 rounded-lg border border-brand-primary/25 bg-brand-pastel-blue px-2 py-1.5 text-sm font-semibold text-brand-primary transition-colors hover:border-brand-primary/40 hover:bg-brand-pastel-blue/80',
+  btnResend:
+    'inline-flex shrink-0 items-center gap-1.5 rounded-full bg-brand-primary px-3 py-1 text-xs font-semibold text-white shadow-blue-sm transition-colors hover:bg-brand-primaryDark disabled:cursor-not-allowed disabled:opacity-50 whitespace-nowrap',
+  badgeWindowClosed:
+    'inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500 whitespace-nowrap',
   tabBar: 'inline-flex items-center gap-1.5 rounded-full bg-gray-100 p-1.5 overflow-x-auto no-scrollbar max-md:w-full max-md:max-w-full max-md:gap-1 max-md:p-1',
   tabActive:
     'px-4 py-2 rounded-full text-[14px] font-semibold whitespace-nowrap transition-all bg-brand-primary text-white shadow-blue-sm max-md:px-3 max-md:py-1.5 max-md:text-[13px]',

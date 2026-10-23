@@ -17,6 +17,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Send as SendIcon,
   Users,
   UserCheck,
   UserX,
@@ -317,10 +318,11 @@ function ResendAssignButton({
   if (!retry.windowOpen) {
     return (
       <span
-        className="text-xs font-medium text-gray-400"
+        className={ui.badgeWindowClosed}
         title="User's WhatsApp window is closed — re-send available after the user messages"
       >
-        Window closed
+        <Clock size={12} />
+        Closed
       </span>
     );
   }
@@ -332,10 +334,10 @@ function ResendAssignButton({
       onClick={() => onResend(row)}
       disabled={sendingId !== null}
       title={retry.errorTitle ? `Last error: ${retry.errorTitle}` : 'Re-send assign task message'}
-      className="inline-flex items-center gap-1 rounded-full border border-brand-primary/30 px-2.5 py-1 text-xs font-semibold text-brand-primary hover:bg-brand-primary/5 disabled:opacity-50"
+      className={ui.btnResend}
     >
-      {isSending && <Loader2 size={12} className="animate-spin" />}
-      Send
+      {isSending ? <Loader2 size={12} className="animate-spin" /> : <SendIcon size={12} />}
+      {isSending ? 'Sending' : 'Send'}
     </button>
   );
 }
@@ -1562,8 +1564,8 @@ export default function AdminDashboard({
                             <col style={{ width: '22%' }} />
                             <col style={{ width: '18%' }} />
                             <col style={{ width: '14%' }} />
-                            <col style={{ width: '12%' }} />
                             <col style={{ width: '10%' }} />
+                            <col style={{ width: '12%' }} />
                             <col style={{ width: '6%' }} />
                           </>
                         ) : (
@@ -1633,31 +1635,40 @@ export default function AdminDashboard({
                               )}
                               {showUserSentCol && (
                                 <td className="px-4 py-3">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span
-                                      className={`text-sm font-semibold capitalize ${getDeliveryStatusClassName(dt.deliveryStatus)}`}
+                                  <span
+                                    className={`text-sm font-semibold capitalize ${getDeliveryStatusClassName(dt.deliveryStatus)}`}
+                                  >
+                                    {formatDeliveryStatusLabel(dt.deliveryStatus)}
+                                  </span>
+                                  {!isUserAllFilter && dt.assignRetry && (
+                                    <div className="mt-1.5">
+                                      <ResendAssignButton
+                                        row={dt}
+                                        sendingId={resendingAssignId}
+                                        onResend={handleResendAssign}
+                                      />
+                                    </div>
+                                  )}
+                                </td>
+                              )}
+                              {isUserAllFilter && (
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        goToUserTasks(dt.user?.name || '', dt.user?.number || '')
+                                      }
+                                      className={ui.linkPrimary}
                                     >
-                                      {formatDeliveryStatusLabel(dt.deliveryStatus)}
-                                    </span>
+                                      Task
+                                    </button>
                                     <ResendAssignButton
                                       row={dt}
                                       sendingId={resendingAssignId}
                                       onResend={handleResendAssign}
                                     />
                                   </div>
-                                </td>
-                              )}
-                              {isUserAllFilter && (
-                                <td className="px-4 py-3">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      goToUserTasks(dt.user?.name || '', dt.user?.number || '')
-                                    }
-                                    className={ui.linkPrimary}
-                                  >
-                                    Task
-                                  </button>
                                 </td>
                               )}
                               {isUserAllFilter && (

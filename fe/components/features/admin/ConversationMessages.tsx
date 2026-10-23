@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Search } from 'lucide-react';
+import { Clock, Loader2, Search, Send as SendIcon } from 'lucide-react';
 import { AdminTableSkeleton } from '@/components/ui/skeletons';
 import Modal, { ModalDetailGrid, ModalDetailRow } from '@/components/ui/Modal';
 import { cachedQueryOptions } from '@/lib/query-config';
@@ -133,14 +133,16 @@ function ResendAssignButton({
   if (!retry.windowOpen) {
     return (
       <span
-        className="text-xs font-medium text-gray-400"
+        className={ui.badgeWindowClosed}
         title="User's WhatsApp window is closed — re-send available after the user messages"
       >
-        Window closed
+        <Clock size={12} />
+        Closed
       </span>
     );
   }
 
+  const isSending = sendingId === retry.dailyTaskId;
   return (
     <button
       type="button"
@@ -150,10 +152,10 @@ function ResendAssignButton({
       }}
       disabled={sendingId !== null}
       title="Re-send assign task message"
-      className="inline-flex items-center gap-1 rounded-full border border-brand-primary/30 px-2.5 py-1 text-xs font-semibold text-brand-primary hover:bg-brand-primary/5 disabled:opacity-50"
+      className={ui.btnResend}
     >
-      {sendingId === retry.dailyTaskId && <Loader2 size={12} className="animate-spin" />}
-      Send
+      {isSending ? <Loader2 size={12} className="animate-spin" /> : <SendIcon size={12} />}
+      {isSending ? 'Sending' : 'Send'}
     </button>
   );
 }
@@ -421,14 +423,16 @@ export default function ConversationMessages({
                         </td>
                         <td className="px-4 py-3 text-gray-700">{truncateBody(msg.body)}</td>
                         <td className="px-4 py-3">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <StatusBadge status={msg.status} />
-                            <ResendAssignButton
-                              msg={msg}
-                              sendingId={resendingId}
-                              onResend={handleResend}
-                            />
-                          </div>
+                          <StatusBadge status={msg.status} />
+                          {msg.assignRetry && (
+                            <div className="mt-1.5">
+                              <ResendAssignButton
+                                msg={msg}
+                                sendingId={resendingId}
+                                onResend={handleResend}
+                              />
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
                           {formatDateTime(getMessageTime(msg))}
