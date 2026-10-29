@@ -144,7 +144,7 @@ export type AssignTaskSheetGroup = {
 
 type SheetTaskRow = { name: string; rawStartTime: string; rawEndTime: string };
 
-function identicalTaskKey(task: SheetTaskRow): string {
+export function identicalTaskKey(task: SheetTaskRow): string {
     return `${task.name.trim().toLowerCase()}|${task.rawStartTime.trim().toLowerCase()}|${task.rawEndTime.trim().toLowerCase()}`;
 }
 

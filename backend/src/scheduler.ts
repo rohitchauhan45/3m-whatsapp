@@ -3,6 +3,7 @@ import logger from "./libraries/log/logger";
 import { prisma } from "./libraries/db";
 import {
     assignTask,
+    createRemainingTasks,
     finalDecisionDailyTask,
     sendPreviousTaskHoldReminders,
     sendRemaingstatusTomanager,
@@ -13,7 +14,9 @@ import { AcceptStatus, TaskFinalStatus, TaskStaus } from "@prisma/client";
 import { isTaskStartDueEarly, isTaskStartNow, isTaskDueForHourlyFollowUp, HOURLY_FOLLOW_UP_CRON_SCHEDULES } from "./libraries/util/Task/timing";
 import {
     CRON_SETTING_NAMES,
+    DEFAULT_ASSIGN_CRON,
     DEFAULT_REMAINING_STATUS_DELAY_MIN,
+    DEFAULT_REMAINING_TASK_CRON,
     DEFAULT_START_TASK_EARLY_MIN,
     resolveCronSetting,
     resolveMinuteSetting,
@@ -29,9 +32,10 @@ let hourlyFollowUpJobs: CronJob[] = [];
 let onTrackJob: CronJob | null = null;
 let endOfDaySummaryJob: CronJob | null = null;
 let managerReminderJob: CronJob | null = null;
+let remainingTaskJob: CronJob | null = null;
 let remainingStatusTimeout: NodeJS.Timeout | null = null;
 
-const DEFAULT_ASSIGN_TIME = "0 21 * * *";
+const DEFAULT_ASSIGN_TIME = DEFAULT_ASSIGN_CRON;
 const DEFAULT_ONTRACK_TIME = "0 7 * * *";
 /** Daily end-of-day summary for managers and admin at 10:00 PM IST. */
 const END_OF_DAY_SUMMARY_CRON = "0 22 * * *";
@@ -238,6 +242,19 @@ async function runFollowUpForAll() {
     }
 }
 
+async function runRemainingTasks() {
+    logger.info("cron Starting remaining-task copy onto tomorrow");
+    try {
+        const result = await createRemainingTasks();
+        logger.info(
+            `cron remaining-task done: copied=${result.copied} duplicate=${result.skippedDuplicate} badTime=${result.skippedBadTime} users=${result.users}`,
+        );
+    } catch (err) {
+        logger.error("cron remaining-task failed", err);
+        await notifyAdminError("cron remaining task copy");
+    }
+}
+
 async function runManagerWindowReminders() {
     logger.info("cron Starting manager window reminders");
     try {
@@ -265,15 +282,22 @@ export async function readCronjob() {
     if (onTrackJob) { onTrackJob.stop(); onTrackJob = null; }
     if (endOfDaySummaryJob) { endOfDaySummaryJob.stop(); endOfDaySummaryJob = null; }
     if (managerReminderJob) { managerReminderJob.stop(); managerReminderJob = null; }
+    if (remainingTaskJob) { remainingTaskJob.stop(); remainingTaskJob = null; }
     if (remainingStatusTimeout) { clearTimeout(remainingStatusTimeout); remainingStatusTimeout = null; }
 
     let assignTime = DEFAULT_ASSIGN_TIME;
+    let remainingTaskTime = DEFAULT_REMAINING_TASK_CRON;
     let onTrackTime = DEFAULT_ONTRACK_TIME;
 
     try {
         const crons = await prisma.cron.findMany();
 
         assignTime = resolveCronSetting(crons, CRON_SETTING_NAMES.ASSIGN, DEFAULT_ASSIGN_TIME);
+        remainingTaskTime = resolveCronSetting(
+            crons,
+            CRON_SETTING_NAMES.REMAINING_TASK,
+            DEFAULT_REMAINING_TASK_CRON,
+        );
         onTrackTime = resolveCronSetting(crons, CRON_SETTING_NAMES.ONTRACK, DEFAULT_ONTRACK_TIME);
 
         const remainingMin = resolveMinuteSetting(
@@ -292,6 +316,10 @@ export async function readCronjob() {
         logger.warn("cron Could not read cron from DB, using defaults", err);
         await notifyAdminError("read cron settings from DB");
     }
+
+    remainingTaskJob = new CronJob(remainingTaskTime, runRemainingTasks, null, true, "Asia/Kolkata");
+    remainingTaskJob.start();
+    logger.info(`cron Remaining task copy scheduled: ${remainingTaskTime} IST`);
 
     assignJob = new CronJob(assignTime, runAssignTaskForAll, null, true, "Asia/Kolkata");
     assignJob.start();

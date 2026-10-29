@@ -29,17 +29,28 @@ type ManagerContact = {
 
 type ReminderConversation = {
     windowExpiresAt: Date | null;
+    lastIncomingMessageAt?: Date | null;
     lastSentMessageAt: Date | null;
     lastSentMessageType: string | null;
 };
 
+/**
+ * Open until the later of the stored expiry and 24h after the last incoming message.
+ * A "Hi" at 2:41 PM keeps the window open until 2:41 PM the next day.
+ */
 export function isWhatsAppWindowOpen(
-    conversation: { windowExpiresAt: Date | null } | null,
+    conversation: {
+        windowExpiresAt: Date | null;
+        lastIncomingMessageAt?: Date | null;
+    } | null,
     now = new Date(),
 ): boolean {
-    const expiresAt = conversation?.windowExpiresAt;
-    if (!expiresAt) return false;
-    return expiresAt.getTime() > now.getTime();
+    if (!conversation) return false;
+    const storedExpiry = conversation.windowExpiresAt?.getTime() ?? 0;
+    const incomingExpiry = conversation.lastIncomingMessageAt
+        ? conversation.lastIncomingMessageAt.getTime() + DAY_IN_MS
+        : 0;
+    return Math.max(storedExpiry, incomingExpiry) > now.getTime();
 }
 
 /**
@@ -130,15 +141,15 @@ async function getLastManagerReminderAt(conversationId: string): Promise<Date | 
     return last?.sendAt ?? last?.createdAt ?? null;
 }
 
-/** Send manager_reminder only if window expired and not already reminded in last 24h. */
+/** Each manager and admin is checked on their own conversation. */
 export async function sendManagerWindowReminders(): Promise<ManagerWindowReminderResult> {
     const now = new Date();
     let sent = 0;
     let failed = 0;
     let skipped = 0;
 
-    const managers = await prisma.user.findMany({
-        where: { role: Role.manager, deletedAt: null },
+    const people = await prisma.user.findMany({
+        where: { role: { in: [Role.manager, Role.admin] }, deletedAt: null },
         select: {
             id: true,
             name: true,
@@ -146,18 +157,19 @@ export async function sendManagerWindowReminders(): Promise<ManagerWindowReminde
         },
     });
 
-    for (const manager of managers) {
-        const phone = manager.number?.trim() ?? "";
+    for (const person of people) {
+        const phone = person.number?.trim() ?? "";
         if (!phone) {
             skipped += 1;
             continue;
         }
 
         const conversation = await prisma.whatsAppConversation.findUnique({
-            where: { userId: manager.id },
+            where: { userId: person.id },
             select: {
                 id: true,
                 windowExpiresAt: true,
+                lastIncomingMessageAt: true,
                 lastSentMessageAt: true,
                 lastSentMessageType: true,
             },
@@ -173,17 +185,17 @@ export async function sendManagerWindowReminders(): Promise<ManagerWindowReminde
         }
 
         const ok = await sendManagerReminderTemplate({
-            id: manager.id,
-            name: manager.name,
-            number: manager.number,
+            id: person.id,
+            name: person.name,
+            number: person.number,
         });
 
         if (ok) {
             sent += 1;
-            logger.info(`manager_reminder sent managerId=${manager.id}`);
+            logger.info(`manager_reminder sent userId=${person.id}`);
         } else {
             failed += 1;
-            logger.warn(`manager_reminder failed managerId=${manager.id}`);
+            logger.warn(`manager_reminder failed userId=${person.id}`);
         }
     }
 

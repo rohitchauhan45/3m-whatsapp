@@ -11,6 +11,7 @@ import {
     normalizeSheetDate,
     readAssignTaskExcelSheetRows,
     dedupeIdenticalTasks,
+    identicalTaskKey,
     type AssignTaskSheetGroup,
 } from "../../../libraries/util/Task/readfromxl";
 import { sendWhatsappTemplate } from "../../whtsapp/sendWhatsApp";
@@ -37,6 +38,7 @@ function sendWelcomeMsgInBackground(): void {
         void notifyAdminError("sendWelcomeMsg");
     });
 }
+
 export async function sendWelcomeMsg(): Promise<SendWelcomeMsgResult> {
     const pending = await prisma.user.findMany({
         where: {
@@ -511,6 +513,18 @@ async function importTaskGroups(groups: AssignTaskSheetGroup[]): Promise<CreateT
                         },
                     });
 
+                    const existingTasks = dailyTask
+                        ? await tx.task.findMany({
+                              where: { dailyTaskId: dailyTask.id, deletedAt: null },
+                              select: { name: true, rawStartTime: true, rawEndTime: true },
+                          })
+                        : [];
+                    const existingKeys = new Set(existingTasks.map((task) => identicalTaskKey(task)));
+                    const tasksToCreate = orderedTasks.filter(
+                        (task) => !existingKeys.has(identicalTaskKey(task)),
+                    );
+                    if (tasksToCreate.length === 0) continue;
+
                     if (!dailyTask) {
                         dailyTask = await tx.dailyTask.create({
                             data: {
@@ -520,7 +534,7 @@ async function importTaskGroups(groups: AssignTaskSheetGroup[]): Promise<CreateT
                         });
                     }
 
-                    for (const task of orderedTasks) {
+                    for (const task of tasksToCreate) {
                         await tx.task.create({
                             data: {
                                 name: task.name,

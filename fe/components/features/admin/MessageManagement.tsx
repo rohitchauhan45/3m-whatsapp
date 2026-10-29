@@ -92,6 +92,19 @@ function getLastType(row: ConversationRow): string {
   return type || '—';
 }
 
+/** Time of the newer message. Incoming wins a tie, same as lastDirection. */
+function getLastMessageAt(row: ConversationRow): string | null {
+  if (row.lastDirection === 'incoming') return row.lastIncomingMessageAt;
+  if (row.lastDirection === 'outgoing') return row.lastSentMessageAt;
+  return null;
+}
+
+/** Incoming rows are stored as READ. Outgoing uses the delivery status. */
+function getLastStatus(row: ConversationRow): string | null {
+  if (row.lastDirection === 'incoming') return 'READ';
+  return row.lastSentMessageStatus;
+}
+
 function DirectionBadge({ direction }: { direction: 'incoming' | 'outgoing' | null }) {
   if (!direction) return <span className="text-gray-400">—</span>;
   if (direction === 'incoming') {
@@ -238,16 +251,16 @@ function ConversationMobileList({
             </div>
             <div className="flex justify-between gap-3">
               <span className="text-gray-500">Status</span>
-              <StatusBadge status={row.lastSentMessageStatus} />
+              <StatusBadge status={getLastStatus(row)} />
             </div>
             <div className="flex justify-between gap-3">
               <span className="text-gray-500">Messages</span>
               <span className="font-medium text-gray-800 tabular-nums">{row.messageCount}</span>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-gray-500">Last sent</span>
+              <span className="text-gray-500">Last message</span>
               <span className="font-medium text-gray-800">
-                {formatDateTime(row.lastSentMessageAt)}
+                {formatDateTime(getLastMessageAt(row))}
               </span>
             </div>
           </div>
@@ -331,12 +344,6 @@ export default function MessageManagement() {
               iconColor="text-amber-600"
             />
             <StatCard
-              title="Total Messages"
-              value={cardsQuery.data.totalMessages}
-              icon={MessageSquare}
-              iconColor="text-brand-primary"
-            />
-            <StatCard
               title="Incoming"
               value={cardsQuery.data.incomingMessages}
               icon={ArrowDownLeft}
@@ -353,6 +360,12 @@ export default function MessageManagement() {
               value={cardsQuery.data.failedMessages}
               icon={AlertTriangle}
               iconColor="text-red-600"
+            />
+            <StatCard
+              title="Total Messages"
+              value={cardsQuery.data.totalMessages}
+              icon={MessageSquare}
+              iconColor="text-brand-primary"
             />
           </div>
         )}
@@ -411,7 +424,7 @@ export default function MessageManagement() {
                       <th className="px-4 py-3">Direction</th>
                       <th className="px-4 py-3">Last Type</th>
                       <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Last Sent</th>
+                      <th className="px-4 py-3">Last message</th>
                       <th className="px-4 py-3">Msgs</th>
                       <th className="px-2 py-3" aria-label="View messages" />
                     </tr>
@@ -440,10 +453,10 @@ export default function MessageManagement() {
                         </td>
                         <td className="px-4 py-3 text-gray-700 truncate">{getLastType(row)}</td>
                         <td className="px-4 py-3">
-                          <StatusBadge status={row.lastSentMessageStatus} />
+                          <StatusBadge status={getLastStatus(row)} />
                         </td>
                         <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                          {formatDateTime(row.lastSentMessageAt)}
+                          {formatDateTime(getLastMessageAt(row))}
                         </td>
                         <td className="px-4 py-3 tabular-nums text-gray-700">{row.messageCount}</td>
                         <td className="px-2 py-3 text-center align-middle">

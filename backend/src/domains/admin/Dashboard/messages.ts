@@ -40,6 +40,16 @@ function resolveLastDirection(
     return incomingAt >= sentAt ? "incoming" : "outgoing";
 }
 
+/** Newer of the two stored message times. Missing side does not count. */
+function lastActivityMs(
+    lastIncomingMessageAt: Date | null,
+    lastSentMessageAt: Date | null,
+): number {
+    const incomingAt = lastIncomingMessageAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+    const sentAt = lastSentMessageAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+    return Math.max(incomingAt, sentAt);
+}
+
 function buildConversationStatusWhere(
     statusFilter: ConversationStatusFilter,
     now: Date,
@@ -174,34 +184,52 @@ export const conversationTable = async (
             ],
         };
 
-        const [rows, total] = await Promise.all([
-            prisma.whatsAppConversation.findMany({
-                where,
-                skip,
-                take: limit,
-                orderBy: [
-                    { lastSentMessageAt: "desc" },
-                    { lastIncomingMessageAt: "desc" },
-                    { updatedAt: "desc" },
-                ],
-                include: {
-                    user: {
-                        select: {
-                            id: true,
-                            name: true,
-                            number: true,
-                            role: true,
-                        },
-                    },
-                    _count: {
-                        select: {
-                            messages: messageDateWhere ? { where: messageDateWhere } : true,
-                        },
-                    },
-                },
-            }),
-            prisma.whatsAppConversation.count({ where }),
-        ]);
+        // Prisma cannot ORDER BY the later of two columns. Load only the
+        // timestamps, sort by the real last message (incoming or outgoing),
+        // then load the page. Status webhooks must not change this order.
+        const activityRows = await prisma.whatsAppConversation.findMany({
+            where,
+            select: {
+                id: true,
+                lastIncomingMessageAt: true,
+                lastSentMessageAt: true,
+            },
+        });
+        activityRows.sort(
+            (a, b) =>
+                lastActivityMs(b.lastIncomingMessageAt, b.lastSentMessageAt) -
+                lastActivityMs(a.lastIncomingMessageAt, a.lastSentMessageAt),
+        );
+        const total = activityRows.length;
+        const pageIds = activityRows.slice(skip, skip + limit).map((row) => row.id);
+
+        const unorderedRows =
+            pageIds.length === 0
+                ? []
+                : await prisma.whatsAppConversation.findMany({
+                      where: { id: { in: pageIds } },
+                      include: {
+                          user: {
+                              select: {
+                                  id: true,
+                                  name: true,
+                                  number: true,
+                                  role: true,
+                              },
+                          },
+                          _count: {
+                              select: {
+                                  messages: messageDateWhere
+                                      ? { where: messageDateWhere }
+                                      : true,
+                              },
+                          },
+                      },
+                  });
+        const pageOrder = new Map(pageIds.map((id, index) => [id, index]));
+        const rows = unorderedRows.sort(
+            (a, b) => (pageOrder.get(a.id) ?? 0) - (pageOrder.get(b.id) ?? 0),
+        );
 
         const conversations = rows.map((row) => {
             const windowOpen =
@@ -341,6 +369,7 @@ export const conversationMessages = async (
                   where: { id: { in: failedAssignDailyTaskIds }, deletedAt: null },
                   select: {
                       id: true,
+                      date: true,
                       deliveryStatus: true,
                       retryFailedMessage: { select: { messageId: true, resolvedAt: true } },
                   },
@@ -348,7 +377,9 @@ export const conversationMessages = async (
             : [];
         const pendingById = new Map(
             pendingDailyTasks
-                .filter((dt) => isAssignRetryPending(dt.deliveryStatus, dt.retryFailedMessage))
+                .filter((dt) =>
+                    isAssignRetryPending(dt.deliveryStatus, dt.retryFailedMessage, dt.date),
+                )
                 .map((dt) => [dt.id, dt]),
         );
 

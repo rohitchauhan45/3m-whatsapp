@@ -9,20 +9,20 @@ async function seedUsers() {
 
     // Check if users already exist
     const existingAdmin = await prisma.user.findUnique({
-      where: { email: "chauhanrohith.3277@gmail.com" },
+      where: { email: "3m.mukesh.06@gmail.com" },
     });
 
     // Create admin user
     if (!existingAdmin) {
-      const adminPassword = await bcrypt.hash("secure", 10);
+      const adminPassword = await bcrypt.hash("3M_066066", 10);
       const admin = await prisma.user.create({
         data: {
-          username: "rohit",
-          email: "chauhanrohith.3277@gmail.com",
+          username: "mukeshbhai mistry",
+          email: "3m.mukesh.06@gmail.com",
           emailVerified: true,
           password: adminPassword,
-          name: "Rohit chauhan",
-          number: "917698489306",
+          name: "Mukeshbhai Mistry",
+          number: "919601702929",
           role: "admin",
           provider: "local",
         },
@@ -63,6 +63,7 @@ async function seedUsers() {
 
     // Seed default cronjobs (id and name both start with "default_")
     const defaultCronjobs = [
+      { id: "default_remaining_task_time", name: "default_remaining_task_time", time: "0 19 * * *" },
       { id: "default_task_assign_time", name: "default_task_assign_time", time: "0 21 * * *" },
       { id: "default_task_followup_time", name: "default_task_followup_time", time: "0 10 * * *" },
       { id: "default_task_ontrack_time", name: "default_task_ontrack_time", time: "0 7 * * *" },

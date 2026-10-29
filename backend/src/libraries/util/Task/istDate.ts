@@ -50,6 +50,11 @@ export function isFutureISTCalendarDate(date: Date, now = new Date()): boolean {
     return date.getTime() > getISTTodayCalendarDate(now).getTime();
 }
 
+/** True when the stored calendar day is already over in IST (before today). */
+export function isPastISTCalendarDate(date: Date, now = new Date()): boolean {
+    return date.getTime() < getISTTodayCalendarDate(now).getTime();
+}
+
 export function formatCalendarDateLabel(date: Date): string {
     const { y, m, d } = getUTCDateParts(date);
     return `${String(d).padStart(2, "0")}-${String(m).padStart(2, "0")}-${y}`;

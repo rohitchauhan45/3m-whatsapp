@@ -9,6 +9,7 @@ import { cachedQueryOptions } from '@/lib/query-config';
 import { useToast } from '@/lib/providers/toast-provider';
 
 const CRON_LABELS: Record<string, string> = {
+  default_remaining_task_time: 'Remaining Task Time',
   default_task_assign_time: 'Task Assign Time',
   default_task_followup_time: 'Task Follow-up Time',
   default_task_ontrack_time: 'Morning On-Track Check',
@@ -17,6 +18,8 @@ const CRON_LABELS: Record<string, string> = {
 };
 
 const CRON_DESCRIPTIONS: Record<string, string> = {
+  default_remaining_task_time:
+    'Daily time to copy unfinished tasks onto tomorrow. Must be before task assign time',
   default_task_assign_time: 'Daily time to send task assignments via WhatsApp',
   default_task_followup_time: 'Daily time to send follow-up reminders to users',
   default_task_ontrack_time: 'Daily time to ask users if accepted tasks are on track',
@@ -27,6 +30,7 @@ const CRON_DESCRIPTIONS: Record<string, string> = {
 };
 
 const CORE_CRON_KEYS = [
+  'default_remaining_task_time',
   'default_task_assign_time',
   'default_task_followup_time',
   'default_task_ontrack_time',
@@ -40,6 +44,7 @@ const MINUTE_SETTING_KEYS = [
 type SettingKey = (typeof CORE_CRON_KEYS)[number] | (typeof MINUTE_SETTING_KEYS)[number];
 
 const SETTINGS_DISPLAY_ORDER: SettingKey[] = [
+  'default_remaining_task_time',
   'default_task_assign_time',
   'default_remaining_status_delay',
   'default_task_ontrack_time',
@@ -52,6 +57,7 @@ function isMinuteSettingKey(name: string): name is (typeof MINUTE_SETTING_KEYS)[
 }
 
 const CORE_CRON_DEFAULTS: Record<(typeof CORE_CRON_KEYS)[number], string> = {
+  default_remaining_task_time: '0 19 * * *',
   default_task_assign_time: '0 21 * * *',
   default_task_followup_time: '0 10 * * *',
   default_task_ontrack_time: '0 7 * * *',

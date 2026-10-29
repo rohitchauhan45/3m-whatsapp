@@ -3,7 +3,15 @@ import { AppError } from "../../libraries/error-handling/AppError";
 import logger from "../../libraries/log/logger";
 import { isValidCron } from "cron-validator";
 import { readCronjob } from "../../scheduler";
-import { isMinuteSettingName, parsePositiveMinutes } from "../../constants/cronSettings";
+import {
+    CRON_SETTING_NAMES,
+    DEFAULT_ASSIGN_CRON,
+    DEFAULT_REMAINING_TASK_CRON,
+    isMinuteSettingName,
+    parsePositiveMinutes,
+    remainingTaskScheduleError,
+    resolveCronSetting,
+} from "../../constants/cronSettings";
 import { Role } from "@prisma/client";
 import { notifyAdminError } from "../../libraries/util/notifyAdminError";
 import {
@@ -277,6 +285,26 @@ export const updateAdminCronjob = async (id: string, data: cronjobData) => {
             normalizedTime = String(minutes);
         } else if (!isValidCron(normalizedTime)) {
             return { success: false, status: 400, message: `Invalid cron expression: ${normalizedTime}` };
+        }
+
+        if (name === CRON_SETTING_NAMES.ASSIGN || name === CRON_SETTING_NAMES.REMAINING_TASK) {
+            const crons = await prisma.cron.findMany();
+            const assignTime =
+                name === CRON_SETTING_NAMES.ASSIGN
+                    ? normalizedTime
+                    : resolveCronSetting(crons, CRON_SETTING_NAMES.ASSIGN, DEFAULT_ASSIGN_CRON);
+            const remainingTime =
+                name === CRON_SETTING_NAMES.REMAINING_TASK
+                    ? normalizedTime
+                    : resolveCronSetting(
+                          crons,
+                          CRON_SETTING_NAMES.REMAINING_TASK,
+                          DEFAULT_REMAINING_TASK_CRON,
+                      );
+            const scheduleError = remainingTaskScheduleError(remainingTime, assignTime);
+            if (scheduleError) {
+                return { success: false, status: 400, message: scheduleError };
+            }
         }
 
         if (id.startsWith("default_")) {

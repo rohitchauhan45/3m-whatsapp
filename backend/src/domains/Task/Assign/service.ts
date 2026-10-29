@@ -24,6 +24,7 @@ import {
     formatCalendarDateLabel,
     getISTTodayCalendarDate,
     getISTTomorrowCalendarDate,
+    isPastISTCalendarDate,
 } from "../../../libraries/util/Task/istDate";
 import { notifyAdminError } from "../../../libraries/util/notifyAdminError";
 import { notifyDashboardUpdate } from "../../../libraries/realtime";
@@ -265,11 +266,14 @@ const resendAssignInFlight = new Set<string>();
 /**
  * Only assignTask sends link a dailyTaskId, so DailyTask.deliveryStatus FAILED = assign message failed.
  * A resolved RetryFailedMessage row means it was already re-sent.
+ * Past calendar days are not re-sent — a 26 Oct task is useless on 29 Oct.
  */
 export function isAssignRetryPending(
     deliveryStatus: messageStatus | null,
     retry: { resolvedAt: Date | null } | null,
+    dailyTaskDate: Date,
 ): boolean {
+    if (isPastISTCalendarDate(dailyTaskDate)) return false;
     return deliveryStatus === messageStatus.FAILED && !retry?.resolvedAt;
 }
 
@@ -300,7 +304,15 @@ export const resendFailedAssignTask = async (
 
         if (!dailyTask) throw new AppError("Not found", "Daily task not found", 404);
 
-        if (!isAssignRetryPending(dailyTask.deliveryStatus, dailyTask.retryFailedMessage)) {
+        if (isPastISTCalendarDate(dailyTask.date)) {
+            throw new AppError(
+                "Validation error",
+                "This daily task date has passed — cannot re-send",
+                400,
+            );
+        }
+
+        if (!isAssignRetryPending(dailyTask.deliveryStatus, dailyTask.retryFailedMessage, dailyTask.date)) {
             throw new AppError("Conflict", "No failed assign message to re-send", 409);
         }
 

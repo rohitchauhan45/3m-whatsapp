@@ -436,7 +436,7 @@ export const usertable = async (
             return {
                 ...dt,
                 user: user ? { name: user.name, number: user.number } : undefined,
-                assignRetry: isAssignRetryPending(dt.deliveryStatus, retryFailedMessage)
+                assignRetry: isAssignRetryPending(dt.deliveryStatus, retryFailedMessage, dt.date)
                     ? {
                           failedAt: retryFailedMessage?.failedAt ?? dt.updatedAt,
                           errorTitle: retryFailedMessage?.errorTitle ?? null,
